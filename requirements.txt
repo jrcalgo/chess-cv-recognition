@@ -1,0 +1,6 @@
+pygame
+numpy
+matplotlib
+seaborn
+pandas
+stockfish
