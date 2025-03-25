@@ -1,5 +1,10 @@
 import numpy as np
 import pygame
+from pygame import Surface, SurfaceType
+from pygame.font import Font
+from pygame.time import Clock
+
+from assets.parse_sprites import parse_sprites
 
 
 class ChessPieces:
@@ -13,6 +18,137 @@ class ChessPieces:
         # White pieces (bottom of board)
         self.piece_state[6] = np.array(["wP"] * 8)
         self.piece_state[7] = np.array(["wR", "wKn", "wB", "wQ", "wK", "wB", "wKn", "wR"])
+
+    def check_move_legality(self, piece: str, src: tuple[int, int], dst: tuple[int, int]):
+        """
+        Check if a move from src to dst is legal for the given piece.
+        """
+        if piece == "wP" or piece == "bP":
+            return self._check_pawn_move(piece, src, dst)
+        elif piece == "wR" or piece == "bR":
+            return self._check_rook_move(src, dst)
+        elif piece == "wKn" or piece == "bKn":
+            return self._check_knight_move(src, dst)
+        elif piece == "wB" or piece == "bB":
+            return self._check_bishop_move(src, dst)
+        elif piece == "wQ" or piece == "bQ":
+            return self._check_queen_move(src, dst)
+        elif piece == "wK" or piece == "bK":
+            return self._check_king_move(src, dst)
+        return False
+    
+    def _check_pawn_move(self, piece: str, src: tuple[int, int], dst: tuple[int, int]):
+        """
+        Check if a pawn move from src to dst is legal.
+        """
+        # Determine direction based on pawn color.
+        direction = -1 if piece[0] == 'w' else 1
+        # Check for a valid move:
+        # - Move one square forward if the destination is empty.
+        if dst[1] == src[1] and self.piece_state[dst[0], dst[1]] == "":
+            if dst[0] == src[0] + direction:
+                return True
+            # - Move two squares forward if the pawn is at the starting row.
+            if src[0] == 1 or src[0] == 6:
+                if dst[0] == src[0] + 2 * direction and self.piece_state[src[0] + direction, src[1]] == "":
+                    return True
+        # - Capture a piece diagonally.
+        if abs(dst[1] - src[1]) == 1 and dst[0] == src[0] + direction:
+            return self.piece_state[dst[0], dst[1]] != ""
+        # - En passant: special capture move.
+        return False
+        
+    def _check_rook_move(self, src: tuple[int, int], dst: tuple[int, int]):
+        """
+        Check if a rook move from src to dst is legal.
+        """
+        # Rook moves horizontally or vertically.
+        if src[0] == dst[0] or src[1] == dst[1]:
+            # Check if there are any pieces in the way.
+            if src[0] == dst[0]:
+                # Move is horizontal.
+                start = min(src[1], dst[1])
+                end = max(src[1], dst[1])
+                for j in range(start + 1, end):
+                    if self.piece_state[src[0], j] != "":
+                        return False
+            else:
+                # Move is vertical.
+                start = min(src[0], dst[0])
+                end = max(src[0], dst[0])
+                for i in range(start + 1, end):
+                    if self.piece_state[i, src[1]] != "":
+                        return False
+            return True
+        return False
+        
+    def _check_knight_move(self, src: tuple[int, int], dst: tuple[int, int]):
+        """
+        Check if a knight move from src to dst is legal.
+        """
+        # Knight moves in an L-shape: two squares in one direction and one square in the other.
+        if (abs(dst[0] - src[0]) == 2 and abs(dst[1] - src[1]) == 1) or (abs(dst[0] - src[0]) == 1 and abs(dst[1] - src[1]) == 2):
+            return True
+        return False
+        
+    def _check_bishop_move(self, src: tuple[int, int], dst: tuple[int, int]):
+        """
+        Check if a bishop move from src to dst is legal.
+        """
+        # Bishop moves diagonally.
+        if abs(dst[0] - src[0]) == abs(dst[1] - src[1]):
+            # Check if there are any pieces in the way.
+            start_i = min(src[0], dst[0])
+            start_j = min(src[1], dst[1])
+            end_i = max(src[0], dst[0])
+            end_j = max(src[1], dst[1])
+            for i in range(1, end_i - start_i):
+                if self.piece_state[start_i + i, start_j + i] != "":
+                    return False
+            return True
+        return False
+        
+    def _check_queen_move(self, src: tuple[int, int], dst: tuple[int, int]):
+        """
+        Check if a queen move from src to dst is legal.
+        """
+        # Queen moves horizontally, vertically, or diagonally.
+        if src[0] == dst[0] or src[1] == dst[1] or abs(dst[0] - src[0]) == abs(dst[1] - src[1]):
+            # Check if there are any pieces in the way.
+            if src[0] == dst[0]:
+                # Move is horizontal.
+                start = min(src[1], dst[1])
+                end = max(src[1], dst[1])
+                for j in range(start + 1, end):
+                    if self.piece_state[src[0], j] != "":
+                        return False
+            elif src[1] == dst[1]:
+                # Move is vertical.
+                start = min(src[0], dst[0])
+                end = max(src[0], dst[0])
+                for i in range(start + 1, end):
+                    if self.piece_state[i, src[1]] != "":
+                        return False
+            else:
+                # Move is diagonal.
+                start_i = min(src[0], dst[0])
+                start_j = min(src[1], dst[1])
+                end_i = max(src[0], dst[0])
+                end_j = max(src[1], dst[1])
+                for i in range(1, end_i - start_i):
+                    if self.piece_state[start_i + i, start_j + i] != "":
+                        return False
+            return True
+        return False
+        
+    def _check_king_move(self, src: tuple[int, int], dst: tuple[int, int]):
+        """
+        Check if a king move from src to dst is legal.
+        """
+        # King moves one square in any direction.
+        if abs(dst[0] - src[0]) <= 1 and abs(dst[1] - src[1]) <= 1:
+            return True
+        return False
 
 
 class ChessBoard:
@@ -34,7 +170,7 @@ class ChessBoardState:
         # For en passant: store a tuple (piece, src, dst) of the last move.
         self.last_move = None
 
-    def update_state(self, src, dst):
+    def update_state(self, src: tuple[int, int], dst: tuple[int, int]):
         """
         Move a piece from src (row, col) to dst (row, col). 
         Only moves a piece if it belongs to the current player.
@@ -52,7 +188,7 @@ class ChessBoardState:
         self.current_turn = 'b' if self.current_turn == 'w' else 'w'
         return True
 
-    def promote_piece(self, pos, new_type="Q"):
+    def promote_piece(self, pos: tuple[int, int], new_type: str = "Q"):
         """
         Promote a pawn at pos (row, col) to a new piece type.
         By default, promotion is to a Queen.
@@ -118,7 +254,7 @@ class ChessBoardState:
                     return True
         return False
 
-    def en_passant(self, src, dst):
+    def en_passant(self, src: tuple[int, int], dst: tuple[int, int]):
         """
         Perform en passant capture if applicable.
         src: starting position (row, col) of the pawn making the capture.
@@ -172,13 +308,14 @@ class ChessGame:
         self.board_state = ChessBoardState()
         self.selected = None  # For selecting a piece to move (source square).
         self.square_size = 100
+        self.white_pieces, self.black_pieces = parse_sprites()
 
     def run_game(self):
         pygame.init()
-        screen = pygame.display.set_mode((800, 800))
+        screen: Surface | SurfaceType = pygame.display.set_mode((800, 800))
         pygame.display.set_caption('Chess')
-        font = pygame.font.SysFont(None, 40)
-        clock = pygame.time.Clock()
+        font: Font = pygame.font.SysFont(None, 40)
+        clock: Clock = pygame.time.Clock()
         running = True
 
         while running:
@@ -231,10 +368,10 @@ class ChessGame:
     def get_board_state(self):
         return self.board_state
 
-    def move_piece(self, src, dst):
+    def move_piece(self, src: tuple[int, int], dst: tuple[int, int]):
         self.board_state.update_state(src, dst)
 
-    def promote_piece(self, pos, new_type="Q"):
+    def promote_piece(self, pos: tuple[int, int], new_type: str = "Q"):
         self.board_state.promote_piece(pos, new_type)
 
     def castle_kingside(self):
@@ -243,7 +380,7 @@ class ChessGame:
     def castle_queenside(self):
         self.board_state.castle_queenside()
 
-    def en_passant(self, src, dst):
+    def en_passant(self, src: tuple[int, int], dst: tuple[int, int]):
         self.board_state.en_passant(src, dst)
 
     def checkmate(self):
