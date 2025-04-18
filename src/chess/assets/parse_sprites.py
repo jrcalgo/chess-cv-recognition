@@ -1,33 +1,65 @@
+import os
 from PIL import Image
+import cv2 as cv
+import numpy as np
 
 
-def parse_sprites() -> (dict, dict):
-    """Parses the sprites from the spritesheet and returns a dictionary of sprites.
+def parse_sprites(scale_size=32) -> tuple[dict, dict]:
+    """Parses the sprites from the spritesheet and returns dictionaries of sprites.
 
-        white_pieces.png and black_pieces.png are ordered bishop (row 1), knight (row 2),
-        king (row 3, col 1), queen (row 3, col 3), rook (row 3, col 4), pawn (row 4).
+    The spritesheets (white_pieces.png and black_pieces.png) contain:
+    - Bishop: row 0 (4 variations)
+    - Knight: row 1 (4 variations)
+    - King (col 0), Queen (col 1), Rook (col 2): row 2
+    - Pawn: row 3, col 0
     """
-    white_spritesheet = Image.open("white_pieces.png")
-    black_spritesheet = Image.open("black_pieces.png")
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+
+    white_pieces_path = os.path.join(current_dir, 'white_pieces.png')
+    black_pieces_path = os.path.join(current_dir, 'black_pieces.png')
+
+    white_spritesheet = cv.imread(white_pieces_path, cv.IMREAD_UNCHANGED)
+    black_spritesheet = cv.imread(black_pieces_path, cv.IMREAD_UNCHANGED)
+
+    if white_spritesheet.shape[2] == 3:
+        white_spritesheet = cv.cvtColor(white_spritesheet, cv.COLOR_BGR2RGBA)
+        black_spritesheet = cv.cvtColor(black_spritesheet, cv.COLOR_BGR2RGBA)
 
     sprite_width, sprite_height = 32, 32
 
-    white_sprites = {}
-    black_sprites = {}
+    white_pieces = {}
+    black_pieces = {}
 
-    cols = 128 // sprite_width
-    rows = 128 // sprite_height
+    piece_positions = {
+        'B': [(0, 0)],  # Bishop (first)
+        'Kn': [(1, 0)],  # Knight (first)
+        'K': [(2, 0)],  # King
+        'Q': [(2, 1)],  # Queen
+        'R': [(2, 2)],  # Rook (first)
+        'P': [(3, 0)]  # Pawn
+    }
 
-    # TODO: Refactor this below to properly parse the files (this does not work)
-    for row in range(rows):
-        for col in range(cols):
-            left = col * sprite_width
-            upper = row * sprite_height
-            right = left + sprite_width
-            lower = upper + sprite_height
-            white_sprite = white_spritesheet.crop((left, upper, right, lower))
-            black_sprite = black_spritesheet.crop((left, upper, right, lower))
-            white_sprites[(row, col)] = white_sprite
-            black_sprites[(row, col)] = black_sprite
+    # Process each piece type
+    for piece_type, positions in piece_positions.items():
+        row, col = positions[0]
 
-    return white_sprites, black_sprites
+        y = row * sprite_height
+        x = col * sprite_width
+
+        white_sprite = white_spritesheet[y:y + sprite_height, x:x + sprite_width]
+        black_sprite = black_spritesheet[y:y + sprite_height, x:x + sprite_width]
+
+        white_mask = cv.inRange(white_sprite[:, :, :3], np.array([0, 0, 0]), np.array([10, 10, 10]))
+        white_sprite[white_mask > 0] = [0, 0, 0, 0]  # Make black background transparent
+
+        black_mask = cv.inRange(black_sprite[:, :, :3], np.array([128, 128, 0]), np.array([130, 130, 2]))
+        black_sprite[black_mask > 0] = [0, 0, 0, 0]  # Make teal background transparent
+
+        if scale_size != sprite_width:
+            white_sprite = cv.resize(white_sprite, (scale_size, scale_size), interpolation=cv.INTER_AREA)
+            black_sprite = cv.resize(black_sprite, (scale_size, scale_size), interpolation=cv.INTER_AREA)
+
+        white_pieces[f"w{piece_type}"] = white_sprite
+        black_pieces[f"b{piece_type}"] = black_sprite
+
+    return white_pieces, black_pieces

@@ -23,6 +23,11 @@ class ChessPieces:
         """
         Check if a move from src to dst is legal for the given piece.
         """
+        # First check: cannot move to a square with your own piece
+        dst_piece = self.piece_state[dst[0], dst[1]]
+        if dst_piece != "" and dst_piece[0] == piece[0]:
+            return False
+
         if piece == "wP" or piece == "bP":
             return self._check_pawn_move(piece, src, dst)
         elif piece == "wR" or piece == "bR":
@@ -36,28 +41,40 @@ class ChessPieces:
         elif piece == "wK" or piece == "bK":
             return self._check_king_move(src, dst)
         return False
-    
+
     def _check_pawn_move(self, piece: str, src: tuple[int, int], dst: tuple[int, int]):
         """
         Check if a pawn move from src to dst is legal.
         """
         # Determine direction based on pawn color.
         direction = -1 if piece[0] == 'w' else 1
-        # Check for a valid move:
-        # - Move one square forward if the destination is empty.
-        if dst[1] == src[1] and self.piece_state[dst[0], dst[1]] == "":
+
+        # Check for forward movement (can't capture)
+        if dst[1] == src[1]:
+            # Can only move forward to empty squares
+            if self.piece_state[dst[0], dst[1]] != "":
+                return False
+
+            # Move one square forward
             if dst[0] == src[0] + direction:
                 return True
-            # - Move two squares forward if the pawn is at the starting row.
-            if src[0] == 1 or src[0] == 6:
+
+            # Move two squares forward if the pawn is at the starting row
+            if (src[0] == 1 and piece[0] == 'b') or (src[0] == 6 and piece[0] == 'w'):
                 if dst[0] == src[0] + 2 * direction and self.piece_state[src[0] + direction, src[1]] == "":
                     return True
-        # - Capture a piece diagonally.
+            return False
+
+        # Check for diagonal capture
         if abs(dst[1] - src[1]) == 1 and dst[0] == src[0] + direction:
-            return self.piece_state[dst[0], dst[1]] != ""
-        # - En passant: special capture move.
+            # Must have an enemy piece to capture
+            dst_piece = self.piece_state[dst[0], dst[1]]
+            if dst_piece != "" and dst_piece[0] != piece[0]:
+                return True
+
+        # En passant would be handled here
         return False
-        
+
     def _check_rook_move(self, src: tuple[int, int], dst: tuple[int, int]):
         """
         Check if a rook move from src to dst is legal.
@@ -81,66 +98,49 @@ class ChessPieces:
                         return False
             return True
         return False
-        
+
     def _check_knight_move(self, src: tuple[int, int], dst: tuple[int, int]):
         """
         Check if a knight move from src to dst is legal.
         """
         # Knight moves in an L-shape: two squares in one direction and one square in the other.
-        if (abs(dst[0] - src[0]) == 2 and abs(dst[1] - src[1]) == 1) or (abs(dst[0] - src[0]) == 1 and abs(dst[1] - src[1]) == 2):
+        if (abs(dst[0] - src[0]) == 2 and abs(dst[1] - src[1]) == 1) or (
+                abs(dst[0] - src[0]) == 1 and abs(dst[1] - src[1]) == 2):
             return True
         return False
-        
+
     def _check_bishop_move(self, src: tuple[int, int], dst: tuple[int, int]):
         """
         Check if a bishop move from src to dst is legal.
         """
         # Bishop moves diagonally.
         if abs(dst[0] - src[0]) == abs(dst[1] - src[1]):
-            # Check if there are any pieces in the way.
-            start_i = min(src[0], dst[0])
-            start_j = min(src[1], dst[1])
-            end_i = max(src[0], dst[0])
-            end_j = max(src[1], dst[1])
-            for i in range(1, end_i - start_i):
-                if self.piece_state[start_i + i, start_j + i] != "":
+            # Determine the direction of movement
+            row_step = 1 if dst[0] > src[0] else -1
+            col_step = 1 if dst[1] > src[1] else -1
+
+            # Check if there are any pieces in the way
+            row, col = src[0] + row_step, src[1] + col_step
+            while (row, col) != dst:
+                if self.piece_state[row, col] != "":
                     return False
+                row += row_step
+                col += col_step
             return True
         return False
-        
+
     def _check_queen_move(self, src: tuple[int, int], dst: tuple[int, int]):
         """
         Check if a queen move from src to dst is legal.
         """
-        # Queen moves horizontally, vertically, or diagonally.
-        if src[0] == dst[0] or src[1] == dst[1] or abs(dst[0] - src[0]) == abs(dst[1] - src[1]):
-            # Check if there are any pieces in the way.
-            if src[0] == dst[0]:
-                # Move is horizontal.
-                start = min(src[1], dst[1])
-                end = max(src[1], dst[1])
-                for j in range(start + 1, end):
-                    if self.piece_state[src[0], j] != "":
-                        return False
-            elif src[1] == dst[1]:
-                # Move is vertical.
-                start = min(src[0], dst[0])
-                end = max(src[0], dst[0])
-                for i in range(start + 1, end):
-                    if self.piece_state[i, src[1]] != "":
-                        return False
-            else:
-                # Move is diagonal.
-                start_i = min(src[0], dst[0])
-                start_j = min(src[1], dst[1])
-                end_i = max(src[0], dst[0])
-                end_j = max(src[1], dst[1])
-                for i in range(1, end_i - start_i):
-                    if self.piece_state[start_i + i, start_j + i] != "":
-                        return False
-            return True
+        # Queen combines rook and bishop movement
+        # For simplicity, we reuse the rook and bishop logic
+        if src[0] == dst[0] or src[1] == dst[1]:
+            return self._check_rook_move(src, dst)
+        elif abs(dst[0] - src[0]) == abs(dst[1] - src[1]):
+            return self._check_bishop_move(src, dst)
         return False
-        
+
     def _check_king_move(self, src: tuple[int, int], dst: tuple[int, int]):
         """
         Check if a king move from src to dst is legal.
@@ -172,7 +172,7 @@ class ChessBoardState:
 
     def update_state(self, src: tuple[int, int], dst: tuple[int, int]):
         """
-        Move a piece from src (row, col) to dst (row, col). 
+        Move a piece from src (row, col) to dst (row, col).
         Only moves a piece if it belongs to the current player.
         (No full move legality is checked here.)
         """
@@ -235,7 +235,8 @@ class ChessBoardState:
         if self.current_turn == 'w':
             # White king must be at (7,4) and rook at (7,0)
             if self.pieces.piece_state[7, 4] == "wK" and self.pieces.piece_state[7, 0] == "wR":
-                if self.pieces.piece_state[7, 1] == "" and self.pieces.piece_state[7, 2] == "" and self.pieces.piece_state[7, 3] == "":
+                if self.pieces.piece_state[7, 1] == "" and self.pieces.piece_state[7, 2] == "" and \
+                        self.pieces.piece_state[7, 3] == "":
                     self.pieces.piece_state[7, 2] = "wK"
                     self.pieces.piece_state[7, 4] = ""
                     self.pieces.piece_state[7, 3] = "wR"
@@ -245,7 +246,8 @@ class ChessBoardState:
         else:
             # Black king must be at (0,4) and rook at (0,0)
             if self.pieces.piece_state[0, 4] == "bK" and self.pieces.piece_state[0, 0] == "bR":
-                if self.pieces.piece_state[0, 1] == "" and self.pieces.piece_state[0, 2] == "" and self.pieces.piece_state[0, 3] == "":
+                if self.pieces.piece_state[0, 1] == "" and self.pieces.piece_state[0, 2] == "" and \
+                        self.pieces.piece_state[0, 3] == "":
                     self.pieces.piece_state[0, 2] = "bK"
                     self.pieces.piece_state[0, 4] = ""
                     self.pieces.piece_state[0, 3] = "bR"
@@ -266,7 +268,8 @@ class ChessBoardState:
         # Determine direction based on pawn color.
         direction = -1 if piece[0] == 'w' else 1
         # Check if the move is a diagonal step into an empty square.
-        if abs(dst[1] - src[1]) == 1 and (dst[0] - src[0]) == direction and self.pieces.piece_state[dst[0], dst[1]] == "":
+        if abs(dst[1] - src[1]) == 1 and (dst[0] - src[0]) == direction and self.pieces.piece_state[
+            dst[0], dst[1]] == "":
             # The pawn to capture is directly adjacent in the same row as src, in column dst[1].
             captured = self.pieces.piece_state[src[0], dst[1]]
             if captured != "" and captured[1] == "P" and captured[0] != piece[0]:
@@ -284,92 +287,324 @@ class ChessBoardState:
                         return True
         return False
 
+    # TODO: implement check_for_checkmate
     def check_for_checkmate(self):
-        """
-        Dummy checkmate: if one of the kings is missing.
-        (A full checkmate check would require move generation and check validation.)
-        """
-        kings = 0
-        for i in range(8):
-            for j in range(8):
-                if self.pieces.piece_state[i, j] in ["wK", "bK"]:
-                    kings += 1
-        return kings < 2
+        pass
 
+    # TODO: implement check_for_stalement
     def check_for_stalemate(self):
-        """
-        Dummy stalemate: not fully implemented.
-        """
-        return False
+        pass
+
+
+class TimerInputScreen:
+    def __init__(self):
+        self.minutes = 10  # Default 10 minutes
+        self.font = pygame.font.SysFont(None, 40)
+        self.title_font = pygame.font.SysFont(None, 90)
+        self.input_active = False
+        self.input_text = str(self.minutes)
+        self.cursor_visible = True
+        self.cursor_timer = 0
+
+    def run(self, screen):
+        """Run the timer input screen and return the selected time in seconds"""
+        clock = pygame.time.Clock()
+        running = True
+        screen_width, screen_height = screen.get_size()
+        center_x = screen_width // 2
+
+        while running:
+            # cursor blinking
+            self.cursor_timer += clock.get_time()
+            if self.cursor_timer >= 500:  # Toggle cursor every 500ms
+                self.cursor_visible = not self.cursor_visible
+                self.cursor_timer = 0
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    return None
+
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    input_rect = pygame.Rect(center_x - 100, 400, 200, 50)
+
+                    # Check if input box is clicked
+                    if input_rect.collidepoint(event.pos):
+                        if not self.input_active:
+                            self.input_active = True
+                            self.input_text = ""
+                    else:
+                        self.input_active = False
+
+                    # Check if start button is clicked
+                    start_button = pygame.Rect(center_x - 100, 500, 200, 50)
+                    if start_button.collidepoint(event.pos):
+                        try:
+                            minutes = int(self.input_text) if self.input_text else 10
+                            self.minutes = max(1, minutes)
+                            running = False
+                        except ValueError:
+                            self.input_text = "10"
+
+                elif event.type == pygame.KEYDOWN and self.input_active:
+                    if event.key == pygame.K_RETURN:
+                        try:
+                            minutes = int(self.input_text) if self.input_text else 10
+                            self.minutes = max(1, minutes)
+                            running = False
+                        except ValueError:
+                            self.input_text = "10"
+                    elif event.key == pygame.K_BACKSPACE:
+                        self.input_text = self.input_text[:-1]
+                    elif event.unicode.isdigit():
+                        self.input_text += event.unicode
+
+            # Draw background
+            screen.fill((50, 50, 50))
+
+            # Draw title
+            title = self.title_font.render("Chess", True, (255, 255, 255))
+            title_rect = title.get_rect(center=(center_x, 200))
+            screen.blit(title, title_rect)
+
+            # Draw input label
+            label = self.font.render("Minutes per player:", True, (255, 255, 255))
+            label_rect = label.get_rect(center=(center_x, 350))
+            screen.blit(label, label_rect)
+
+            # Draw input box
+            input_rect = pygame.Rect(center_x - 100, 400, 200, 50)
+            pygame.draw.rect(screen, (200, 200, 200), input_rect)
+            pygame.draw.rect(screen, (0, 0, 0), input_rect, 2)
+
+            # Draw input text
+            display_text = self.input_text
+            if self.input_active and self.cursor_visible:
+                display_text += "|"  # blink
+
+            text_surface = self.font.render(display_text, True, (0, 0, 0))
+            text_rect = text_surface.get_rect(center=input_rect.center)
+            screen.blit(text_surface, text_rect)
+
+            # Draw start button
+            start_button = pygame.Rect(center_x - 100, 500, 200, 50)
+            pygame.draw.rect(screen, (0, 200, 0), start_button)
+            start_text = self.font.render("Start Game", True, (255, 255, 255))
+            start_text_rect = start_text.get_rect(center=start_button.center)
+            screen.blit(start_text, start_text_rect)
+
+            pygame.display.flip()
+            clock.tick(30)
+
+        return self.minutes * 60
+
+
+def format_time(seconds):
+    minutes = seconds // 60
+    seconds = seconds % 60
+    return f"{minutes:02d}:{seconds:02d}"
 
 
 class ChessGame:
     def __init__(self):
         self.board_state = ChessBoardState()
-        self.selected = None  # For selecting a piece to move (source square).
+        self.piece_selection: tuple[int, int] = None  # For selecting a piece to move (source square).
         self.square_size = 100
         self.white_pieces, self.black_pieces = parse_sprites()
 
+        self.white_captured = []
+        self.black_captured = []
+
+        self.CAPTURED_PIECE_SIZE = 30
+        self.MAX_PIECES_PER_ROW = 8
+
+        self.white_time = 0
+        self.black_time = 0
+        self.last_time = 0
+        self.game_over = False
+
+        pygame.font.init()
+        self.font = pygame.font.SysFont(None, 40)
+        self.timer_font = pygame.font.SysFont(None, 36)
+
+    def move_piece(self, src: tuple[int, int], dst: tuple[int, int]):
+         dst_piece = str(self.board_state.pieces.piece_state[dst[0], dst[1]])
+         if dst_piece != "":
+             if dst_piece.startswith("w"):
+                 self.black_captured.append(dst_piece)
+             else:
+                 self.white_captured.append(dst_piece)
+
+         self.board_state.update_state(src, dst)
+
+    def draw_captured_pieces(self, screen):
+        """Draw captured pieces in the timer sections."""
+        # white captures for black player
+        self._draw_player_captures(screen, self.white_captured, 10, 10)
+        # black captures for white player
+        screen_height = screen.get_height()
+        self._draw_player_captures(screen, self.black_captured, 10, screen_height - 90)
+
+    def _draw_player_captures(self, screen, captured_pieces, start_x, start_y):
+        """Helper to draw one player's captured pieces."""
+        for i, piece in enumerate(captured_pieces):
+            row = i // self.MAX_PIECES_PER_ROW
+            col = i % self.MAX_PIECES_PER_ROW
+
+            x = start_x + col * self.CAPTURED_PIECE_SIZE
+            y = start_y + row * self.CAPTURED_PIECE_SIZE
+
+            try:
+                if piece.startswith('w'):
+                    piece_img = self.white_pieces[piece]
+                else:
+                    piece_img = self.black_pieces[piece]
+
+                scaled_img = pygame.transform.scale(piece_img,
+                                                    (self.CAPTURED_PIECE_SIZE, self.CAPTURED_PIECE_SIZE))
+
+                # Draw the piece
+                screen.blit(scaled_img, (x, y))
+
+            except KeyError:
+                text = self.font.render(piece[1:], True, (255, 255, 255))
+                text_rect = text.get_rect(center=(x + self.CAPTURED_PIECE_SIZE // 2,
+                                                  y + self.CAPTURED_PIECE_SIZE // 2))
+                screen.blit(text, text_rect)
+
     def run_game(self):
         pygame.init()
-        screen: Surface | SurfaceType = pygame.display.set_mode((800, 800))
-        pygame.display.set_caption('Chess')
-        font: Font = pygame.font.SysFont(None, 40)
+
+        # Create a screen with extra space for timers (100px at top and bottom)
+        screen_height = 800 + 100 + 100  # Board height + top timer + bottom timer
+        screen: Surface | SurfaceType = pygame.display.set_mode((800, screen_height))
+        pygame.display.set_caption('Chess with Timer')
+
+        # Get timer settings from input screen
+        timer_input = TimerInputScreen()
+        initial_time = timer_input.run(screen)
+        if initial_time is None:  # User closed the window
+            return
+
+        self.white_time = initial_time
+        self.black_time = initial_time
+
         clock: Clock = pygame.time.Clock()
         running = True
+        self.last_time = pygame.time.get_ticks()
 
-        while running:
+        while running and not self.game_over:
+            current_time = pygame.time.get_ticks()
+            time_delta = (current_time - self.last_time) / 1000  # Convert to seconds
+            self.last_time = current_time
+
+            # Update the active player's timer
+            if self.board_state.current_turn == 'w':
+                self.white_time -= time_delta
+                if self.white_time <= 0:
+                    self.white_time = 0
+                    self.game_over = True
+            else:
+                self.black_time -= time_delta
+                if self.black_time <= 0:
+                    self.black_time = 0
+                    self.game_over = True
+
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
 
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     x, y = pygame.mouse.get_pos()
-                    col = x // self.square_size
-                    row = y // self.square_size
+                    adjusted_y = y - 100
 
-                    if self.selected is None:
-                        # Select a piece if the square is not empty.
-                        if self.board_state.pieces.piece_state[row, col] != "":
-                            self.selected = (row, col)
-                    else:
-                        # Try to move the selected piece to the new square.
-                        moved = self.board_state.update_state(self.selected, (row, col))
-                        if not moved:
-                            # If a normal move was not valid, try en passant.
-                            self.board_state.en_passant(self.selected, (row, col))
-                        self.selected = None
+                    # only process clicks within the board area
+                    if 0 <= x < 800 and 0 <= adjusted_y < 800:
+                        col = x // self.square_size
+                        row = adjusted_y // self.square_size
+
+                        if self.piece_selection is None:
+                            piece = str(self.board_state.pieces.piece_state[row, col])
+                            if piece != "" and piece[0] == self.board_state.current_turn:
+                                self.piece_selection = (row, col)
+                        else:
+                            # attempt to move piece to new position
+                            src_piece = str(self.board_state.pieces.piece_state[
+                                self.piece_selection[0], self.piece_selection[1]])
+                            if src_piece != "":
+                                # ensure move legality
+                                if self.check_move_legality(
+                                        src_piece,
+                                        self.piece_selection,
+                                        (row, col)):
+                                    self.move_piece(self.piece_selection, (row, col))
+                            self.piece_selection = None
+
+            # Clear the screen
+            screen.fill((30, 30, 30))
+
+            pygame.draw.rect(screen, (50, 50, 50), pygame.Rect(0, 0, 800, 100))
+            black_timer = self.timer_font.render(f"Black: {format_time(int(self.black_time))}", True,
+                                                 (255, 255, 255))
+            screen.blit(black_timer, (350, 40))
+
+            pygame.draw.rect(screen, (50, 50, 50), pygame.Rect(0, 900, 800, 100))
+            white_timer = self.timer_font.render(f"White: {format_time(int(self.white_time))}", True,
+                                                 (255, 255, 255))
+            screen.blit(white_timer, (350, 940))
+
+            turn_text = f"Current turn: {'White' if self.board_state.current_turn == 'w' else 'Black'}"
+            turn_indicator = self.timer_font.render(turn_text, True, (255, 255, 0))
+            screen.blit(turn_indicator, (50, 40 if self.board_state.current_turn == 'b' else 940))
 
             # Draw the board
             for i in range(8):
                 for j in range(8):
                     # Use a light color for even tiles and a dark color for odd tiles.
                     tile_color = (238, 238, 210) if (i + j) % 2 == 0 else (118, 150, 86)
-                    rect = pygame.Rect(j * self.square_size, i * self.square_size,
+                    rect = pygame.Rect(j * self.square_size, i * self.square_size + 100,  # Offset by top timer height
                                        self.square_size, self.square_size)
                     pygame.draw.rect(screen, tile_color, rect)
 
                     # Draw a selection highlight if this square is selected.
-                    if self.selected == (i, j):
+                    if self.piece_selection == (i, j):
                         pygame.draw.rect(screen, (200, 0, 0), rect, 3)
 
                     # Draw any piece that exists in this square.
                     piece: str = str(self.board_state.pieces.piece_state[i, j])
                     if piece != "":
-                        text = font.render(piece, True, (0, 0, 0))
-                        text_rect = text.get_rect(center=rect.center)
-                        screen.blit(text, text_rect)
+                        if piece.startswith("w"):
+                            piece_img = self.white_pieces[piece]
+                        else:
+                            piece_img = self.black_pieces[piece]
+
+                        scaled_img = pygame.transform.scale(piece_img, (self.square_size, self.square_size))
+                        img_rect = scaled_img.get_rect(center=rect.center)
+                        screen.blit(scaled_img, img_rect)
+
+            self.draw_captured_pieces(screen)
+
+            if self.game_over:
+                winner = "Black" if self.white_time <= 0 else "White"
+                game_over_surface = pygame.Surface((400, 200), pygame.SRCALPHA)
+                game_over_surface.fill((0, 0, 0, 200))
+                game_over_text = self.timer_font.render(f"Game Over! {winner} wins by time!", True, (255, 255, 255))
+                game_over_surface.blit(game_over_text, (50, 80))
+                screen.blit(game_over_surface, (200, 350))
 
             pygame.display.flip()
             clock.tick(30)
+
+        if self.game_over:
+            pygame.time.wait(3000)
 
         pygame.quit()
 
     def get_board_state(self):
         return self.board_state
 
-    def move_piece(self, src: tuple[int, int], dst: tuple[int, int]):
-        self.board_state.update_state(src, dst)
+    def check_move_legality(self, piece, row, col) -> bool:
+        return self.board_state.pieces.check_move_legality(piece, row, col)
 
     def promote_piece(self, pos: tuple[int, int], new_type: str = "Q"):
         self.board_state.promote_piece(pos, new_type)
