@@ -1,20 +1,36 @@
 import numpy as np
 import pygame
-from pygame.math import Vector2
 
-def gen_grid(corners: list[pygame.Vector2], n_rows: int, n_cols) -> list[list[pygame.Vector2]]:
+def gen_grid(corners: list[pygame.Vector2], grid_size: int) -> list[list[pygame.Vector2]]:
+    src = [(0, 0), (1, 0), (1, 1), (0, 1)]
+    H = compute_homography(src, corners)
     grid = []
-    for y in range(n_rows):
-        grid.append([])
-        lerp_perc_r = y / (n_rows - 1)
-        p1 = pygame.Vector2.lerp(corners[0], corners[2], lerp_perc_r)
-        p2 = pygame.Vector2.lerp(corners[1], corners[3], lerp_perc_r)
-        for x in range(n_cols):
-            lerp_perc_c = x / (n_cols - 1)
-            point = (pygame.Vector2.lerp(p1, p2, lerp_perc_c))
-            point = (point * 400) + (100,100)
-            grid[y].append(point)
+    for row in range(grid_size + 1):
+        row_points = []
+        v = row / grid_size
+        for col in range(grid_size + 1):
+            u = col / grid_size
+            point = pygame.Vector2(apply_homography(H, (u, v)))
+            row_points.append(point)
+        grid.append(row_points)
     return grid
+
+def compute_homography(src_pts, dst_pts):
+    A = []
+    for (x_src, y_src), (x_dst, y_dst) in zip(src_pts, dst_pts):
+        A.append([-x_src, -y_src, -1, 0, 0, 0, x_src * x_dst, y_src * x_dst, x_dst])
+        A.append([0, 0, 0, -x_src, -y_src, -1, x_src * y_dst, y_src * y_dst, y_dst])
+    A = np.array(A)
+    _, _, Vh = np.linalg.svd(A)
+    L = Vh[-1, :] / Vh[-1, -1]
+    return L.reshape(3, 3)
+
+def apply_homography(H, pt):
+    x, y = pt
+    vec = np.array([x, y, 1])
+    result = H @ vec
+    result /= result[2]
+    return (result[0], result[1])
 
 def draw_grid(grid: list[list[pygame.Vector2]], surf: pygame.Surface):
     for y in range(len(grid)):
@@ -47,21 +63,27 @@ def is_in_cell(point: pygame.Vector2, grid: list[list[pygame.Vector2]], row: int
 
 if __name__ == "__main__":
     corners = []
-    corners.append(pygame.Vector2(.20,.20))
-    corners.append(pygame.Vector2(.80,.20))
-    corners.append(pygame.Vector2(0,1))
-    corners.append(pygame.Vector2(1,1))
-    rect = pygame.Rect(220, 280, 40, 80)
+    rect = pygame.Rect(230, 290, 40, 80)
     center_of_base = get_center_point(rect)
-    grid = gen_grid(corners, 8, 8)
-    screen = pygame.display.set_mode((640, 480))
+    screen = pygame.display.set_mode((428, 571))
     pygame.display.set_caption("perspective grid gen")
-    print(get_cell(center_of_base, grid))
+    img = pygame.image.load('chess_board.jpg')
+    img = pygame.transform.smoothscale(img, (428, 571))
+    screen.blit(img,(0,0))
+    grid = None
     while True:
-        draw_grid(grid, screen)
-        pygame.draw.rect(screen, (255,255,0), rect)
-        pygame.draw.circle(screen, (0, 255, 255), center_of_base, 3)
         pygame.display.update()
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                corners.append(pygame.Vector2(pygame.mouse.get_pos()))
+                if len(corners) == 4:
+                    grid = gen_grid(corners, 8)
+                    print(get_cell(center_of_base, grid))
+
+        if grid == None:
+            continue
+        draw_grid(grid, screen)
+        pygame.draw.rect(screen, (255,255,0), rect)
+        pygame.draw.circle(screen, (0, 255, 255), center_of_base, 3)
