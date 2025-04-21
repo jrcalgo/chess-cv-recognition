@@ -1,6 +1,7 @@
 pygame
 numpy
 matplotlib
+cairosvg
 seaborn
 pandas
 stockfish
