@@ -2,6 +2,7 @@ import numpy as np
 import pygame
 
 letter_map = {0:'a', 1:'b', 2:'c', 3:'d', 4:'e', 5:'f', 6:'g', 7:'h'}
+scrach_surf = pygame.Surface((2000,2000))
 
 def gen_grid(corners: list[pygame.Vector2], grid_size: int) -> list[list[pygame.Vector2]]:
     src = [(0, 0), (1, 0), (1, 1), (0, 1)]
@@ -38,7 +39,7 @@ def draw_grid(grid: list[list[pygame.Vector2]], surf: pygame.Surface):
     for y in range(len(grid)):
         for x in range(len(grid[y])):
             point = grid[y][x]
-            pygame.draw.circle(surf, (255,255,255), point, 5)
+            pygame.draw.circle(surf, (150 + 5*x + 5*y,150 + 5*x + 5*y,150 + 5*x + 5*y), point, 5)
 
 def get_center_point(rect: pygame.Rect):
     x = (rect.left + rect.left + rect.width) / 2
@@ -50,19 +51,21 @@ def get_cell(point: pygame.Vector2, grid: list[list[pygame.Vector2]]):
     for row in range(len(grid)-1):
         for col in range(len(grid[row])-1):
             if is_in_cell(point, grid, row, col):
-                return letter_map[col] + str(row)
+                return letter_map[col] + str(row+1)
     return (-1, -1)
 
 def is_in_cell(point: pygame.Vector2, grid: list[list[pygame.Vector2]], row: int, col: int):
-    if point.y < ((grid[row][col] + grid[row][col+1]) / 2).y:
-        return False
-    if point.y > ((grid[row+1][col] + grid[row+1][col+1]) / 2).y:
-        return False
-    if point.x < ((grid[row][col] + grid[row+1][col]) / 2).x:
-        return False
-    if point.x > ((grid[row][col+1] + grid[row+1][col+1]) / 2).x:
-        return False
-    return True
+    global scrach_surf
+    points = [((grid[row][col] + grid[row][col+1]) / 2), ((grid[row+1][col] + grid[row+1][col+1]) / 2),
+             ((grid[row][col] + grid[row+1][col]) / 2), ((grid[row][col+1] + grid[row+1][col+1]) / 2)]
+    tile = pygame.draw.polygon(scrach_surf, (0,0,0), points)
+    print("(grid[row][col] + grid[row][col+1]) / 2).y: ", ((grid[row][col] + grid[row][col+1]) / 2).y)
+    print("((grid[row+1][col] + grid[row+1][col+1]) / 2).y: ", ((grid[row+1][col] + grid[row+1][col+1]) / 2).y)
+    print("((grid[row][col] + grid[row+1][col]) / 2).x: ", ((grid[row][col] + grid[row+1][col]) / 2).x)
+    print("((grid[row][col+1] + grid[row+1][col+1]) / 2).x: ", ((grid[row][col+1] + grid[row+1][col+1]) / 2).x)
+    if tile.collidepoint(point):
+        return True
+    return False
 
 if __name__ == "__main__":
     corners = []
