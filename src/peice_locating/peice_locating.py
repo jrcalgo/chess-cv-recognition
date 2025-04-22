@@ -1,6 +1,8 @@
 import numpy as np
 import pygame
 
+letter_map = {0:'a', 1:'b', 2:'c', 3:'d', 4:'e', 5:'f', 6:'g', 7:'h'}
+
 def gen_grid(corners: list[pygame.Vector2], grid_size: int) -> list[list[pygame.Vector2]]:
     src = [(0, 0), (1, 0), (1, 1), (0, 1)]
     H = compute_homography(src, corners)
@@ -44,10 +46,11 @@ def get_center_point(rect: pygame.Rect):
     return pygame.Vector2(x, y)
 
 def get_cell(point: pygame.Vector2, grid: list[list[pygame.Vector2]]):
+    global letter_map
     for row in range(len(grid)-1):
         for col in range(len(grid[row])-1):
             if is_in_cell(point, grid, row, col):
-                return (row, col)
+                return letter_map[col] + str(row)
     return (-1, -1)
 
 def is_in_cell(point: pygame.Vector2, grid: list[list[pygame.Vector2]], row: int, col: int):
