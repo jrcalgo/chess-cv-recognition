@@ -59,10 +59,6 @@ def is_in_cell(point: pygame.Vector2, grid: list[list[pygame.Vector2]], row: int
     points = [((grid[row][col] + grid[row][col+1]) / 2), ((grid[row+1][col] + grid[row+1][col+1]) / 2),
              ((grid[row][col] + grid[row+1][col]) / 2), ((grid[row][col+1] + grid[row+1][col+1]) / 2)]
     tile = pygame.draw.polygon(scrach_surf, (0,0,0), points)
-    print("(grid[row][col] + grid[row][col+1]) / 2).y: ", ((grid[row][col] + grid[row][col+1]) / 2).y)
-    print("((grid[row+1][col] + grid[row+1][col+1]) / 2).y: ", ((grid[row+1][col] + grid[row+1][col+1]) / 2).y)
-    print("((grid[row][col] + grid[row+1][col]) / 2).x: ", ((grid[row][col] + grid[row+1][col]) / 2).x)
-    print("((grid[row][col+1] + grid[row+1][col+1]) / 2).x: ", ((grid[row][col+1] + grid[row+1][col+1]) / 2).x)
     if tile.collidepoint(point):
         return True
     return False
