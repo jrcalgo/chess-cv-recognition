@@ -315,7 +315,7 @@ class ChessBoardState:
         enemy = 'b' if color == 'w' else 'w'
         for i in range(8):
             for j in range(8):
-                p = self.pieces.piece_state[i, j]
+                p = str(self.pieces.piece_state[i, j])
                 if p.startswith(enemy):
                     if self.pieces.check_move_legality(p, (i, j), king_pos):
                         return True
@@ -369,8 +369,7 @@ class ChessBoardState:
                             return True
         return False
 
-    def check_for_check(self) -> bool:
-        color = self.current_turn
+    def is_in_check(self, color: str) -> bool:
         if self._is_in_check(color):
             return True
         return False
@@ -602,7 +601,7 @@ class ChessGame:
 
         # Create a screen with extra space for timers (100px at top and bottom)
         screen_height = 800 + 100 + 100  # Board height + top timer + bottom timer
-        screen: Surface | SurfaceType = pygame.display.set_mode((800, screen_height))
+        screen = pygame.display.set_mode((800, screen_height))
         pygame.display.set_caption('Chess Game GUI')
 
         # Convert piece icon arrays to pygame surface
@@ -621,6 +620,8 @@ class ChessGame:
         clock: Clock = pygame.time.Clock()
         running = True
         self.last_time = pygame.time.get_ticks()
+
+        check_status = False
 
         while running and not self.game_over:
             current_time = pygame.time.get_ticks()
@@ -676,24 +677,32 @@ class ChessGame:
                                     abs(dst[1] - src[1]) == 1:
                                 moved = self.board_state.en_passant(src, dst)
 
-                            # 3) Normal move (with check for illegal self‑check)
+                            # 3) Normal move (with check status checking)
                             if not moved and self.board_state.pieces.check_move_legality(piece, src, dst):
-                                old = self.board_state.pieces.piece_state.copy()
+                                # snapshot everything we’ll need to restore
+                                old_board = self.board_state.pieces.piece_state.copy()
+                                old_last_move = self.board_state.last_move
                                 old_turn = self.board_state.current_turn
 
-                                # perform move
+                                # apply the move (this flips current_turn internally)
                                 self.move_piece(src, dst)
 
-                                if self.board_state.check_for_check():  # undo if in check
-                                    self.board_state.pieces.piece_state = old
+                                # check whether *that same color* is in check
+                                if self.board_state.is_in_check('w' if self.board_state.current_turn == 'b' else 'b'):
+                                    self.board_state.pieces.piece_state = old_board
+                                    self.board_state.last_move = old_last_move
                                     self.board_state.current_turn = old_turn
                                 else:
                                     moved = True
+                                    check_status = False
 
                             self.piece_selection = None
 
-                            # after ANY legal move, test for end‑game
+                            # after ANY legal move, test for opponent check or end-game
                             if moved:
+                                if self.board_state.is_in_check('w' if self.board_state.current_turn == 'w' else 'b'):
+                                    check_status = True
+
                                 if self.board_state.check_for_checkmate():
                                     self.game_over = True
                                     self.winner = "Black" if self.board_state.current_turn == 'w' else "White"
@@ -715,7 +724,7 @@ class ChessGame:
                                                  (255, 255, 255))
             screen.blit(white_timer, (350, 940))
 
-            turn_text = f"Current turn:"
+            turn_text = f"Current turn: {'Check!' if check_status else ''}"
             turn_indicator = self.timer_font.render(turn_text, True, (255, 255, 0))
             screen.blit(turn_indicator, (50, 40 if self.board_state.current_turn == 'b' else 940))
 
@@ -781,7 +790,7 @@ class ChessGame:
         self.board_state.en_passant(src, dst)
 
     def check(self):
-        return self.board_state.check_for_check()
+        return self.board_state.is_in_check()
 
     def checkmate(self):
         return self.board_state.check_for_checkmate()
