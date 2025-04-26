@@ -1,32 +1,31 @@
-from stockfish import Stockfish, StockfishException
+import numpy as np
 
-from src.chess.board_state import ChessBoardState
+from stockfish import Stockfish, StockfishException
 
 
 class StockfishPlayer:
-    def __init__(self, chess_board):
-        self.current_board: ChessBoardState = chess_board
+    def __init__(self, piece_state: np.ndarray):
+        self.current_board: np.ndarray = piece_state
         self.stockfish = Stockfish()
 
-    def get_stockfish_move(self, recent_chess_board: ChessBoardState, white_time: int, black_time: int) -> str:
+    def get_stockfish_move(self, recent_piece_state: np.ndarray, white_time: int, black_time: int) -> tuple[tuple[int, int], tuple[int, int]]:
+        best_move = None
         try:
             # Convert ChessBoardState to FEN
-            fen = self._board_to_fen(recent_chess_board)
+            fen = self._board_to_fen(recent_piece_state)
             # Update Stockfish with the current position
             self.stockfish.set_fen_position(fen)
             # Retrieve and return the best move
             best_move = self.stockfish.get_best_move(wtime=white_time, btime=black_time)
         except StockfishException as e:
             print(f"Stockfish error: {e}")
-            best_move = None
         finally:
-            return best_move
+            return self._to_and_from(best_move)
 
-    def _board_to_fen(self, chess_board: ChessBoardState) -> str:
+    def _board_to_fen(self, piece_state: np.ndarray) -> str:
         """
         Convert ChessBoardState into a minimal FEN string.
         """
-        piece_state = chess_board.pieces.piece_state
         fen_rows = []
 
         for row in piece_state:
@@ -50,6 +49,15 @@ class StockfishPlayer:
                 fen_row += str(empty_count)
             fen_rows.append(fen_row)
         placement = "/".join(fen_rows)
-        active_color = chess_board.current_turn  # 'w' or 'b'
+        active_color = 'b'
 
         return f"{placement} {active_color} - - 0 1"
+
+    def _to_and_from(self, best_move: str) -> tuple[tuple[int, int], tuple[int, int]]:
+        if best_move is not None:
+            col_from = ord(best_move[0]) - ord('a')
+            row_from = 8 - int(best_move[1])
+            col_to = ord(best_move[2]) - ord('a')
+            row_to = 8 - int(best_move[3])
+            return (col_from, row_from), (col_to, row_to)
+

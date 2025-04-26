@@ -1,0 +1,6 @@
+{
+    "cv": {
+        "yolo_model": "best.pt",
+        "video_capture_device": 2
+    }
+}

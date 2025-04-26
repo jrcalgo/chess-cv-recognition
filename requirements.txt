@@ -5,3 +5,4 @@ cairosvg
 seaborn
 pandas
 stockfish
+ultralytics
