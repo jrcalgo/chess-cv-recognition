@@ -40,6 +40,7 @@ while True:
         peice_rect = pygame.Rect(piece_info[0], piece_info[1], width, height)
         base_point = get_center_point(peice_rect)
         piece_locations[piece] = get_cell(base_point, grid)
+    print(piece_locations)
     draw_grid(grid, screen)
     if not move_made:
         continue
