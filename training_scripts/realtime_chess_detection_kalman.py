@@ -1,13 +1,19 @@
+import os
+from pathlib import Path
+
 from ultralytics import YOLO
 import cv2
 import numpy as np
 import collections
 
 # Load your trained model
-model = YOLO("C:/Users/amith/Documents/School/ITCS 4152/chess_model/best.pt")
+this_file = Path(__file__).resolve()
+project_root = this_file.parent.parent
+YOLO_MODEL_DIR = os.path.join(project_root, 'models', 'best.pt')
+model = YOLO(YOLO_MODEL_DIR)
 
 # Open Elgato virtual camera (adjust index if needed)
-cap = cv2.VideoCapture(1)
+cap = cv2.VideoCapture(2)
 
 # Define a color for each piece type (BGR format)
 piece_colors = {

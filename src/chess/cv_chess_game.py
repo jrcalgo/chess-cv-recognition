@@ -1,18 +1,15 @@
 import math
-import os
-import threading
-import time
-from collections import deque
-from pathlib import Path
+from collections import deque, Counter
+from typing import Optional
 
 import numpy as np
 import pygame
 from pygame.time import Clock
 import cv2
-from ultralytics import YOLO
 
-from stockfish_api import StockfishPlayer
-from assets.parse_sprites import parse_sprites
+from .computer_vision_panel import ComputerVisionPanel
+from .stockfish_api import StockfishPlayer
+from .assets.parse_sprites import parse_sprites
 
 
 class ChessPieces:
@@ -466,7 +463,7 @@ class TimerInputScreen:
             screen.fill((77, 77, 77))
 
             # Draw title
-            title = self.title_font.render("Chess", True, (255, 255, 255))
+            title = self.title_font.render("Chess CV", True, (255, 255, 255))
             title_rect = title.get_rect(center=(center_x, 200))
             screen.blit(title, title_rect)
 
@@ -510,92 +507,127 @@ def format_time(seconds):
 
 def np_to_surface(img_array: np.ndarray) -> pygame.Surface:
     height, width = img_array.shape[:2]
-    surface = pygame.image.frombuffer(img_array.tobytes(), (width, height), 'RGBA')
-    return surface.convert_alpha()
+
+    if img_array.ndim == 3 and img_array.shape[2] == 3:
+        rgb = cv2.cvtColor(img_array, cv2.COLOR_BGR2RGBA)
+        surface = pygame.image.frombuffer(rgb.tobytes(), (width, height), 'RGBA')
+        return surface.convert()
+    elif img_array.ndim == 3 and img_array.shape[2] == 4:
+        surface = pygame.image.frombuffer(img_array.tobytes(), (width, height), 'RGBA')
+        return surface.convert_alpha()
 
 
-this_file = Path(__file__).resolve()
-project_root = this_file.parent.parent.parent
-YOLO_MODEL_PATH = os.path.join(project_root, 'models', 'best.pt')
-VIDEO_CAPTURE_SOURCE = 2  # Adjust as needed
+def fit_to_scale(surface, target_rect):
+    target_w, target_h = target_rect.size
+    origin_w, origin_h = surface.get_width(), surface.get_height()
+    scale = min(target_w / origin_w, target_h / origin_h)
+    new_w, new_h = int(scale * origin_w), int(scale * origin_h)
+    scaled = pygame.transform.smoothscale(surface, (new_w, new_h))
+    x = target_rect.x + (target_w - new_w) // 2
+    y = target_rect.y + (target_h - new_h) // 2
+    return scaled, x, y
+
+def get_grid_overlay(frame: np.ndarray, grid_size: int = 8, pattern_size: tuple[int, int] = (7, 7)) -> np.ndarray:
+    """
+    Detect the chessboard in `frame`, compute the homography,
+    and return a blank image of the same shape with only the green grid lines drawn.
+    If detection fails, returns an all‐zeros image.
+    """
+    h, w = frame.shape[:2]
+    overlay = np.zeros_like(frame)
+
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    flags = cv2.CALIB_CB_ADAPTIVE_THRESH | cv2.CALIB_CB_NORMALIZE_IMAGE
+    found, corners = cv2.findChessboardCorners(gray, pattern_size, flags=flags)
+    if not found:
+        return overlay
+
+    corners = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1),
+                               criteria=(cv2.TERM_CRITERIA_EPS |
+                                         cv2.TERM_CRITERIA_MAX_ITER,
+                                         30, 0.1))
+
+    # object points in normalized [0,1] coords
+    objp = np.zeros((pattern_size[1] * pattern_size[0], 2), np.float32)
+    objp[:, 0], objp[:, 1] = np.indices(pattern_size).T.reshape(-1, 2)
+    objp /= (grid_size - 1)
+
+    H, _ = cv2.findHomography(objp, corners.reshape(-1, 2))
+
+    # draw green vertical grid lines on the overlay
+    for i in range(grid_size + 1):
+        u = i / grid_size
+        src = np.array([[[u, 0]], [[u, 1]]], np.float32)
+        dst = cv2.perspectiveTransform(src, H)
+        pt1, pt2 = dst[0, 0], dst[1, 0]
+        cv2.line(overlay,
+                 tuple(pt1.astype(int)),
+                 tuple(pt2.astype(int)),
+                 (0, 255, 0), 1)
+
+    # draw green horizontal grid lines on the overlay
+    for j in range(grid_size + 1):
+        v = j / grid_size
+        src = np.array([[[0, v]], [[1, v]]], np.float32)
+        dst = cv2.perspectiveTransform(src, H)
+        pt1, pt2 = dst[0, 0], dst[1, 0]
+        cv2.line(overlay,
+                 tuple(pt1.astype(int)),
+                 tuple(pt2.astype(int)),
+                 (0, 255, 0), 1)
+
+    return overlay
 
 
-class ComputerVisionPanel:
-    def __init__(self):
-        """
-        Instantiates two separate threads for the camera capture and YOLO model inference.
-        Chess GUI game pulls predictions
-        """
-        self.model = YOLO(YOLO_MODEL_PATH, 'detect')
-        self.cap = cv2.VideoCapture(VIDEO_CAPTURE_SOURCE)
+class AnnotationAggregator:
+    """
+    Aggregate a sliding window of board estimations (mapping squares to piece labels) and
+    compute a stable, averaged board state. Tracks changes to minimize re-rendering.
+    """
 
-        self.frame_queue = deque(maxlen=100)
-        self.prediction_queue = deque(maxlen=100)
+    def __init__(self, n_frames: int = 50):
+        self.n_frames = n_frames
+        self.buffer: deque[dict[tuple[int, int], str]] = deque(maxlen=n_frames)
+        self.board_size = 8
+        self.last_state: list[list[Optional[str]]] = [[None] * 8 for _ in range(8)]
 
-        self.camera_thread_handle = threading.Thread(target=self._start_camera_thread(), daemon=True)
-        self.camera_thread_handle.start()
-        self.inference_thread_handle = threading.Thread(target=self._start_inference_thread(), daemon=True)
-        self.inference_thread_handle.start()
+    def add_frame(self, frame_estimate: dict[tuple[int, int], str]):
+        self.buffer.append(frame_estimate)
 
-        self.running = True
+    def _compute_aggregate(self) -> list[list[Optional[str]]]:
+        counts: dict[tuple[int, int], Counter] = {}
+        for frame in self.buffer:
+            for pos, label in frame.items():
+                counts.setdefault(pos, Counter())[label] += 1
+        thresh = (len(self.buffer) // 2) + 1
+        agg_state = [[None] * self.board_size for _ in range(self.board_size)]
+        for (row, col), counter in counts.items():
+            label, freq = counter.most_common(1)[0]
+            if freq >= thresh:
+                agg_state[row][col] = label
+        return agg_state
 
-    def pull_for_render(self):
-        """
-        Allows PyGame to render predictions into frame
-        """
-        if self.prediction_queue:
-            return self.prediction_queue.popleft()
-        return None
+    def get_changes(self) -> dict[tuple[int, int], Optional[str]]:
+        new_state = self._compute_aggregate()
+        diffs: dict[tuple[int, int], Optional[str]] = {}
+        for r in range(self.board_size):
+            for c in range(self.board_size):
+                old = self.last_state[r][c]
+                now = new_state[r][c]
+                if old != now:
+                    diffs[(r, c)] = now
+        self.last_state = new_state
+        return diffs
 
-    def quit(self):
-        """ Terminates execution of Computer Vision Panel operations."""
-        self.running = False
-        self.camera_thread_handle.join(timeout=0.5)
-        self.inference_thread_handle.join(timeout=0.5)
-        self.cap.release()
-
-    def _start_camera_thread(self):
-        """ Continuously read frames and push the latest into frame_queue."""
-        while self.running:
-            ret, frame = self.cap.read()
-            if not ret:
-                time.sleep(0.01)
-                continue
-
-            self.frame_queue.append(frame)
-
-    def _start_inference_thread(self):
-        """
-        Pull the freshest camera frames, run YOLO, draw boxes, convert to RGBA,
-        and push into prediction_queue.
-        """
-        while self.running:
-            if not self.frame_queue:
-                time.sleep(0.005)
-                continue
-
-            frame = self.frame_queue.popleft()
-            results = self.model(frame)
-
-            annotated = frame.copy()
-            for r in results:
-                boxes = r.boxes.xyxy.cpu().numpy()
-                for (x1, y1, x2, y2) in boxes:
-                    cv2.rectangle(
-                        annotated,
-                        (int(x1), int(y1)),
-                        (int(x2), int(y2)),
-                        (255, 0, 0), 2
-                    )
-
-            annotated = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGBA)
-            self.prediction_queue.append(annotated)
+    def reset(self):
+        self.buffer.clear()
+        self.last_state = [[None] * self.board_size for _ in range(self.board_size)]
 
 
-class ChessGame:
-    def __init__(self):
+class CVChessGame:
+    def __init__(self, model_path: str, video_capture_device: int, capture_orientation: str = 'landscape'):
         self.board_state = ChessBoardState()
-        self.piece_selection: tuple[int, int] = None
+        self.piece_selection: Optional[tuple[int, int]] = None
         self.square_size = 100
         self.white_pieces, self.black_pieces = parse_sprites()
 
@@ -617,9 +649,11 @@ class ChessGame:
         self.timer_font = pygame.font.SysFont(None, 36)
 
         # Initialize camera capture panel
-        self.cv_panel = ComputerVisionPanel()
+        display_size = (800, 1000)
+        self.cv_panel = ComputerVisionPanel(display_size, model_path, video_capture_device, capture_orientation)
+        self.last_annotated = None
 
-    def move_piece(self, src: tuple[int,int], dst: tuple[int,int]):
+    def move_piece(self, src: tuple[int, int], dst: tuple[int, int]):
         piece = self.board_state.pieces.piece_state[src[0], src[1]]
         # 1) Castling
         if piece and piece[1] == 'K' and abs(dst[1] - src[1]) == 2:
@@ -694,11 +728,11 @@ class ChessGame:
         pygame.draw.line(screen, color, (source_x, source_y), (target_x, target_y), width)
 
         # arrowhead
-        angle = math.atan2(target_y - source_y, target_x - source_y)
-        left = (target_x - head_len * math.cos(angle - math.pi/6),
-                target_y - head_len * math.sin(angle - math.pi/6))
-        right = (target_x - head_len * math.cos(angle + math.pi/6),
-                 target_y - head_len * math.sin(angle + math.pi/6))
+        angle = math.atan2(target_y - source_y, target_x - source_x)
+        left = (target_x - head_len * math.cos(angle - math.pi / 6),
+                target_y - head_len * math.sin(angle - math.pi / 6))
+        right = (target_x - head_len * math.cos(angle + math.pi / 6),
+                 target_y - head_len * math.sin(angle + math.pi / 6))
         pygame.draw.polygon(screen, color, [(target_x, target_y), left, right])
 
     def run_game(self):
@@ -707,7 +741,7 @@ class ChessGame:
         screen_height = 800 + 100 + 100  # Board height + top timer + bottom timer
         width = 1600
         screen = pygame.display.set_mode((width, screen_height))
-        pygame.display.set_caption('Chess Game GUI')
+        pygame.display.set_caption('Chess GUI')
         half_width = width // 2
 
         # Convert piece icon arrays to pygame surface
@@ -811,7 +845,6 @@ class ChessGame:
                                     old_last_move = self.board_state.last_move
                                     old_turn = current_turn
 
-                                    # apply the move (this flips current_turn internally)
                                     self.move_piece(src, dst)
 
                                     # check whether *that same color* is in check
@@ -843,7 +876,8 @@ class ChessGame:
                         y = row * self.square_size + self.square_size // 2
                         return x, y
 
-                    source_and_dest = self.black_stockfish_player.get_stockfish_move(self.board_state.pieces.piece_state, self.white_time, self.black_time)
+                    source_and_dest = self.black_stockfish_player.get_stockfish_move(
+                        self.board_state.pieces.piece_state, self.white_time, self.black_time)
                     source_x, source_y = _square_location(source_and_dest[0][0], source_and_dest[0][1])
                     target_x, target_y = _square_location(source_and_dest[1][0], source_and_dest[1][1])
 
@@ -851,6 +885,14 @@ class ChessGame:
 
             # Clear the screen
             screen.fill((30, 30, 30))
+
+            # Render ComputerVisionPanel frames from cv and model
+            annotation = self.cv_panel.pull_for_render()
+            if annotation is not None:
+                annotation_frame = annotation[0]
+                annotated_surface = np_to_surface(annotation_frame)
+                scaled, x, y = fit_to_scale(annotated_surface, pygame.Rect(0, 0, half_width, screen_height))
+                screen.blit(scaled, (x, y))
 
             # Draw timers and turn indicators, shifted right by half_width
             pygame.draw.rect(screen, (77, 77, 77), pygame.Rect(half_width, 0, 800, 100))
@@ -872,7 +914,8 @@ class ChessGame:
                 for j in range(8):
                     # Use a light color for even tiles and a dark color for odd tiles.
                     tile_color = (238, 238, 210) if (i + j) % 2 == 0 else (118, 150, 86)
-                    rect = pygame.Rect(j * self.square_size + half_width, i * self.square_size + 100,  # Offset by top timer height
+                    rect = pygame.Rect(j * self.square_size + half_width, i * self.square_size + 100,
+                                       # Offset by top timer height
                                        self.square_size, self.square_size)
                     pygame.draw.rect(screen, tile_color, rect)
 
@@ -903,7 +946,7 @@ class ChessGame:
                 screen.blit(game_over_surface, (half_width + 200, 350))
 
             pygame.display.flip()
-            clock.tick(30)
+            clock.tick(60)
 
         if self.game_over:
             pygame.time.wait(10000)
@@ -937,8 +980,3 @@ class ChessGame:
 
     def stalemate(self):
         return self.board_state.check_for_stalemate()
-
-
-if __name__ == '__main__':
-    game = ChessGame()
-    game.run_game()

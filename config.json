@@ -1,6 +1,7 @@
 {
     "cv": {
         "yolo_model": "best.pt",
-        "video_capture_device": 2
+        "video_capture_device": 1,
+        "capture_orientation": "landscape"
     }
 }

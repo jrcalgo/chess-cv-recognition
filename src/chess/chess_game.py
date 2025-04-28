@@ -1,8 +1,12 @@
+import math
+
 import numpy as np
 import pygame
 from pygame import Surface, SurfaceType
 from pygame.font import Font
 from pygame.time import Clock
+
+from stockfish_api import StockfishPlayer
 
 from assets.parse_sprites import parse_sprites
 
@@ -393,7 +397,7 @@ class ChessBoardState:
 
 class TimerInputScreen:
     def __init__(self):
-        self.minutes = 10  # Default 10 minutes
+        self.minutes = 10  # Default of 10 minutes; is editable from GUI
         self.font = pygame.font.SysFont(None, 40)
         self.title_font = pygame.font.SysFont(None, 90)
         self.input_active = False
@@ -596,6 +600,22 @@ class ChessGame:
                                                   y + self.CAPTURED_PIECE_SIZE // 2))
                 screen.blit(text, text_rect)
 
+    def _draw_stockfish_move_arrow(self, screen, source_x, source_y, target_x, target_y):
+        head_len = 20
+        color = (200, 30, 30)
+        width = 5
+
+        # main shaft
+        pygame.draw.line(screen, color, (source_x, source_y), (target_x, target_y), width)
+
+        # arrowhead
+        angle = math.atan2(target_y - source_y, target_x - source_x)
+        left = (target_x - head_len * math.cos(angle - math.pi/6),
+                 target_y - head_len * math.sin(angle - math.pi/6))
+        right = (target_x - head_len * math.cos(angle + math.pi/6),
+                 target_y - head_len * math.sin(angle + math.pi/6))
+        pygame.draw.polygon(screen, color, [(target_x, target_y), left, right])
+
     def run_game(self):
         pygame.init()
 
@@ -617,15 +637,20 @@ class ChessGame:
         self.white_time = initial_time
         self.black_time = initial_time
 
+        self.white_castled = False
+        self.black_castled = False
+
         clock: Clock = pygame.time.Clock()
         running = True
         self.last_time = pygame.time.get_ticks()
 
-        check_status = False
+        self.check_status = False
+
+        self.black_stockfish_player = StockfishPlayer(self.board_state.pieces.piece_state)
 
         while running and not self.game_over:
             current_time = pygame.time.get_ticks()
-            time_delta = (current_time - self.last_time) / 1000  # Convert to seconds
+            time_delta = (current_time - self.last_time) / 1000  # Converts to seconds
             self.last_time = current_time
 
             # Update the active player's timer
@@ -641,75 +666,98 @@ class ChessGame:
                     self.game_over = True
 
             for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    running = False
+                if self.board_state.current_turn == 'w':
+                    if event.type == pygame.QUIT:
+                        running = False
 
-                elif event.type == pygame.MOUSEBUTTONDOWN:
-                    x, y = pygame.mouse.get_pos()
-                    adjusted_y = y - 100
+                    elif event.type == pygame.MOUSEBUTTONDOWN:
+                        x, y = pygame.mouse.get_pos()
+                        adjusted_y = y - 100
 
-                    # only process clicks within the board area
-                    if 0 <= x < 800 and 0 <= adjusted_y < 800:
-                        col = x // self.square_size
-                        row = adjusted_y // self.square_size
-                        if self.piece_selection is None:
-                            piece = str(self.board_state.pieces.piece_state[row, col])
+                        # only process clicks within the board area
+                        if 0 <= x < 800 and 0 <= adjusted_y < 800:
+                            col = x // self.square_size
+                            row = adjusted_y // self.square_size
+                            if self.piece_selection is None:
+                                piece = str(self.board_state.pieces.piece_state[row, col])
 
-                            if piece and piece.startswith(self.board_state.current_turn):
-                                self.piece_selection = (row, col)
-                        else:
-                            src = self.piece_selection
-                            dst = (row, col)
-                            piece = str(self.board_state.pieces.piece_state[src])
-                            moved = False
+                                if piece and piece.startswith(self.board_state.current_turn):
+                                    self.piece_selection = (row, col)
+                            else:
+                                src = self.piece_selection
+                                dst = (row, col)
+                                piece = str(self.board_state.pieces.piece_state[src])
+                                moved = False
 
-                            # 1) Castling
-                            if piece[1] == 'K' and abs(dst[1] - src[1]) == 2:
-                                if dst[1] > src[1]:
-                                    moved = self.board_state.castle_kingside()
-                                else:
-                                    moved = self.board_state.castle_queenside()
+                                # 1) Castling
+                                current_turn = self.board_state.current_turn
+                                if not self.white_castled and current_turn == 'w':
+                                    if piece[1] == 'K' and abs(dst[1] - src[1]) == 2:
+                                        if dst[1] > src[1]:
+                                            self.castle_kingside()
+                                            moved = True
+                                        else:
+                                            self.castle_queenside()
+                                            moved = True
+                                    self.white_castled = True
 
-                            # 2) En passant
-                            if not moved and piece[1] == 'P' and \
-                                    self.board_state.pieces.piece_state[dst] == "" and \
-                                    dst[0] == src[0] + (-1 if piece[0] == 'w' else 1) and \
-                                    abs(dst[1] - src[1]) == 1:
-                                moved = self.board_state.en_passant(src, dst)
+                                elif not self.black_castled and current_turn == 'b':
+                                    if piece[1] == 'K' and abs(dst[1] - src[1]) == 2:
+                                        if dst[1] > src[1]:
+                                            self.castle_kingside()
+                                            moved = True
+                                        else:
+                                            self.castle_queenside()
+                                            moved = True
+                                    self.black_castled = True
 
-                            # 3) Normal move (with check status checking)
-                            if not moved and self.board_state.pieces.check_move_legality(piece, src, dst):
-                                # snapshot everything we’ll need to restore
-                                old_board = self.board_state.pieces.piece_state.copy()
-                                old_last_move = self.board_state.last_move
-                                old_turn = self.board_state.current_turn
+                                # 2) En passant
+                                if not moved and piece[1] == 'P' and \
+                                        self.board_state.pieces.piece_state[dst] == "" and \
+                                        dst[0] == src[0] + (-1 if piece[0] == 'w' else 1) and \
+                                        abs(dst[1] - src[1]) == 1:
+                                    moved = self.board_state.en_passant(src, dst)
 
-                                # apply the move (this flips current_turn internally)
-                                self.move_piece(src, dst)
+                                # 3) Normal move (with check status checking)
+                                if not moved and self.check_move_legality(piece, src, dst):
+                                    # snapshot everything we’ll need to restore
+                                    old_board = self.board_state.pieces.piece_state.copy()
+                                    old_last_move = self.board_state.last_move
+                                    old_turn = current_turn
 
-                                # check whether *that same color* is in check
-                                if self.board_state.is_in_check('w' if self.board_state.current_turn == 'b' else 'b'):
-                                    self.board_state.pieces.piece_state = old_board
-                                    self.board_state.last_move = old_last_move
-                                    self.board_state.current_turn = old_turn
-                                else:
-                                    moved = True
-                                    check_status = False
+                                    # apply the move (this flips current_turn internally)
+                                    self.move_piece(src, dst)
 
-                            self.piece_selection = None
+                                    # check whether *that same color* is in check
+                                    if self.check('w' if self.board_state.current_turn == 'b' else 'b'):
+                                        self.board_state.pieces.piece_state = old_board
+                                        self.board_state.last_move = old_last_move
+                                        self.board_state.current_turn = old_turn
+                                    else:
+                                        moved = True
+                                        self.check_status = False
 
-                            # after ANY legal move, test for opponent check or end-game
-                            if moved:
-                                if self.board_state.is_in_check('w' if self.board_state.current_turn == 'w' else 'b'):
-                                    check_status = True
+                                self.piece_selection = None
 
-                                if self.board_state.check_for_checkmate():
-                                    self.game_over = True
-                                    self.winner = "Black" if self.board_state.current_turn == 'w' else "White"
+                                # after ANY legal move, test for opponent check or end-game
+                                if moved:
+                                    if self.check('w' if self.board_state.current_turn == 'w' else 'b'):
+                                        self.check_status = True
 
-                                elif self.board_state.check_for_stalemate():
-                                    self.game_over = True
-                                    self.winner = "Draw"
+                                    if self.checkmate():
+                                        self.game_over = True
+                                        self.winner = "Black" if self.board_state.current_turn == 'w' else "White"
+
+                                    elif self.stalemate():
+                                        self.game_over = True
+                                        self.winner = "Draw"
+                elif self.board_state.current_turn == 'b':
+                    source_and_dest = self.black_stockfish_player.get_stockfish_move(self.board_state.pieces.piece_state, self.white_time, self.black_time)
+                    source_x, source_y = source_and_dest[0][0], source_and_dest[0][1]
+                    target_x, target_y = source_and_dest[1][0], source_and_dest[1][1]
+
+                    self._draw_stockfish_move_arrow(screen, source_x, source_y, target_x, target_y)
+                    self.move_piece((source_x, source_y), (target_x, target_y))
 
             # Clear the screen
             screen.fill((30, 30, 30))
@@ -724,7 +772,7 @@ class ChessGame:
                                                  (255, 255, 255))
             screen.blit(white_timer, (350, 940))
 
-            turn_text = f"Current turn: {'Check!' if check_status else ''}"
+            turn_text = f"Current turn: {'Check!' if self.check_status else ''}"
             turn_indicator = self.timer_font.render(turn_text, True, (255, 255, 0))
             screen.blit(turn_indicator, (50, 40 if self.board_state.current_turn == 'b' else 940))
 
@@ -789,8 +837,8 @@ class ChessGame:
     def en_passant(self, src: tuple[int, int], dst: tuple[int, int]):
         self.board_state.en_passant(src, dst)
 
-    def check(self):
-        return self.board_state.is_in_check()
+    def check(self, color: str):
+        return self.board_state.is_in_check(color)
 
     def checkmate(self):
         return self.board_state.check_for_checkmate()

@@ -1,0 +1,24 @@
+import os
+from pathlib import Path
+
+from chess.cv_chess_game import CVChessGame
+from utils.configuration import load_json_config
+
+this_file = Path(__file__).resolve()
+project_root = this_file.parent.parent
+YOLO_MODEL_DIR = os.path.join(project_root, 'models')
+CONFIG_PATH = os.path.join(project_root, 'config.json')
+
+
+def main():
+    config = load_json_config(CONFIG_PATH)
+    yolo_model_path = os.path.join(YOLO_MODEL_DIR, config['cv']['yolo_model'])
+    video_capture_device = config['cv']['video_capture_device']
+    capture_orientation = str(config['cv']['capture_orientation']).lower()
+
+    game = CVChessGame(yolo_model_path, video_capture_device, capture_orientation)
+    game.run_game()
+
+
+if __name__ == "__main__":
+    main()
