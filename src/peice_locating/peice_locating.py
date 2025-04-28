@@ -2,7 +2,34 @@ import numpy as np
 import pygame
 
 letter_map = {0:'a', 1:'b', 2:'c', 3:'d', 4:'e', 5:'f', 6:'g', 7:'h'}
-scrach_surf = pygame.Surface((2000,2000))
+
+class PeiceLocator():
+    def __init__(self):
+        self.corners = []
+        self.has_corners = False
+        self.scrach_surf = pygame.Surface((2000,2000))
+
+    def add_corner(self, point: pygame.Vector2):
+        corners.append(point)
+        if len(self.corners) == 4:
+            self.grid = gen_grid(self.corners, 8)
+            self.has_corners = True
+
+    def get_piece_locations(self, piece_boxes):
+        if not self.has_corners:
+            return None
+        piece_locations = {}
+        for piece in piece_boxes:
+            piece_box = piece_boxes[piece]
+            piece_rect = pygame.Rect(piece_box["x"], piece_box["y"], piece_box["width"], piece_box["height"])
+            base_point = get_center_point(piece_rect)
+            tile = get_cell(base_point, self.grid)
+            if piece not in piece_locations:
+                piece_locations = []
+            piece_locations[piece].append(tile)
+        return piece_locations
+
+
 
 def gen_grid(corners: list[pygame.Vector2], grid_size: int) -> list[list[pygame.Vector2]]:
     src = [(0, 0), (1, 0), (1, 1), (0, 1)]
