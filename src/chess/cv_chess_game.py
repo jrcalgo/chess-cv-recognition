@@ -846,39 +846,37 @@ class CVChessGame:
             screen.fill((30, 30, 30))
 
             # Render ComputerVisionPanel frames from cv and model
-            annotation = self.cv_panel.pull_for_render()
-            if annotation[0] is not None:
-                annotation_frame = annotation[0].copy()
+            frame, rect, text = self.cv_panel.pull_for_render()
+            if frame is not None:
+                annotation_frame = frame.copy()
 
                 annotation_frame = cv2.cvtColor(annotation_frame, cv2.COLOR_BGR2RGB)
-                annotation_frame = cv2.resize(annotation_frame, (500, 800), interpolation=cv2.INTER_LINEAR)
+                annotation_frame = cv2.resize(annotation_frame, (800, 1000), interpolation=cv2.INTER_LINEAR)
 
-                annotated_surface = pygame.image.frombuffer(annotation_frame.tobytes(), (500, 800), 'RGB').convert()
-                old_annotation_surface = annotated_surface.copy()
+                annotated_surface = pygame.image.frombuffer(annotation_frame.tobytes(), (800, 1000), 'RGB').convert()
 
-                if annotation[1] is not None:
-                    annotation_rect = annotation[1]
-                    annotation_text = annotation[2]
+                if rect is not None:
+                    inf_h, inf_w = frame.shape[:2]
+                    x_scale = half_width / inf_w
+                    y_scale = screen_height / inf_h
 
-                    for (x1, y1), (x2, y2), color, thickness in annotation_rect:
+                    scaled_rects = [((x1*x_scale, y1*y_scale), (x2*x_scale, y2*y_scale), color, thickness)
+                                    for (x1, y1), (x2, y2), color, thickness in rect]
+
+                    scaled_texts = [(text, (x*x_scale, y*y_scale), color) for text, (x, y), color in text]
+
+                    for (x1, y1), (x2, y2), color, thickness in scaled_rects:
                         color = bgr2rgb(color)
-                        panel_x1, panel_y1 = translate_camera_coords_to_panel_coords(x1, y1,
-                                                                                   self.cv_panel.cap_width,
-                                                                                   self.cv_panel.cap_height)
-                        panel_x2, panel_y2 = translate_camera_coords_to_panel_coords(x2, y2,
-                                                                                     self.cv_panel.cap_width,
-                                                                                     self.cv_panel.cap_height)
-                        w, h = panel_x2 - panel_x1, panel_y2 - panel_y1
-                        pygame.draw.rect(annotated_surface, color, (panel_x1, panel_y1, w, h), thickness)
+                        w, h = x2 - x1, y2 - y1
+                        pygame.draw.rect(annotated_surface, color, (x1, y1, w, h), thickness)
 
-                    for text, (x, y), color in annotation_text:
+                    for text, (x, y), color in scaled_texts:
                         color = bgr2rgb(color)
-                        panel_x, panel_y = translate_camera_coords_to_panel_coords(x, y,
-                                                                                   self.cv_panel.cap_width,
-                                                                                   self.cv_panel.cap_height)
                         text_surface = self.font.render(text, True, color)
-                        annotated_surface.blit(text_surface, (panel_x, panel_y))
+                        text_surface.set_colorkey((0, 0, 0))
+                        annotated_surface.blit(text_surface, (x, y))
 
+                old_annotation_surface = annotated_surface.copy()
                 scaled, x, y = fit_to_scale(annotated_surface, pygame.Rect(0, 0, half_width, screen_height))
                 screen.blit(scaled, (x, y))
             elif old_annotation_surface is not None:

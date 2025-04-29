@@ -13,7 +13,7 @@ YOLO_MODEL_DIR = os.path.join(project_root, 'models', 'best.pt')
 model = YOLO(YOLO_MODEL_DIR)
 
 # Open Elgato virtual camera (adjust index if needed)
-cap = cv2.VideoCapture(2)
+cap = cv2.VideoCapture(3)
 
 # Define a color for each piece type (BGR format)
 piece_colors = {
