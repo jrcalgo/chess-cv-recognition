@@ -399,8 +399,8 @@ class ChessBoardState:
 class TimerInputScreen:
     def __init__(self):
         self.minutes = 10  # Default of 10 minutes; is editable from GUI
-        self.font = pygame.font.SysFont(None, 40)
-        self.title_font = pygame.font.SysFont(None, 90)
+        self.font = pygame.font.SysFont('Montserrat', 40)
+        self.title_font = pygame.font.SysFont('Montserrat', 90)
         self.input_active = False
         self.input_text = str(self.minutes)
         self.cursor_visible = True
@@ -585,7 +585,7 @@ class CVChessGame:
         self.board_state = ChessBoardState()
         self.piece_selection: Optional[tuple[int, int]] = None
         self.square_size = 100
-        self.white_pieces, self.black_pieces = parse_sprites()
+        self.white_pieces, self.black_pieces = parse_sprites(scale_size=self.square_size)
 
         self.white_captured = []
         self.black_captured = []
@@ -601,8 +601,9 @@ class CVChessGame:
         self.winner = None
 
         pygame.font.init()
-        self.font = pygame.font.SysFont(None, 40)
-        self.timer_font = pygame.font.SysFont(None, 36)
+        self.font = pygame.font.SysFont('Montserrat', 40)
+        self.timer_font = pygame.font.SysFont('Montserrat', 36)
+        self.box_text_font = pygame.font.SysFont('Montserrat', 25)
 
         # Initialize camera capture panel
         display_size = (800, 1000)
@@ -693,17 +694,11 @@ class CVChessGame:
         pygame.draw.polygon(screen, color, [(target_x, target_y), left, right])
 
     def run_game(self):
-        pygame.init()
-
         screen_height = 800 + 100 + 100  # Board height + top timer + bottom timer
         width = 1600
         screen = pygame.display.set_mode((width, screen_height))
         pygame.display.set_caption('Chess GUI')
         half_width = width // 2
-
-        # Convert piece icon arrays to pygame surface
-        self.white_pieces = {k: np_to_surface(v) for k, v in self.white_pieces.items()}
-        self.black_pieces = {k: np_to_surface(v) for k, v in self.black_pieces.items()}
 
         # Get timer settings from input screen
         timer_input = TimerInputScreen()
@@ -872,7 +867,7 @@ class CVChessGame:
 
                     for text, (x, y), color in scaled_texts:
                         color = bgr2rgb(color)
-                        text_surface = self.font.render(text, True, color)
+                        text_surface = self.box_text_font.render(text, True, color)
                         text_surface.set_colorkey((0, 0, 0))
                         annotated_surface.blit(text_surface, (x, y))
 
