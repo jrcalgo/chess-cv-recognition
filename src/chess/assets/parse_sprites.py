@@ -1,20 +1,13 @@
 import os
 from io import BytesIO
 
-import cairosvg
 from PIL import Image
 import numpy as np
 
 
 def _load_svg_as_array(path: str, size: int) -> np.ndarray:
-    png_data = cairosvg.svg2png(
-        url=path,
-        output_width=size,
-        output_height=size
-    )
-    buf = BytesIO(png_data)
-    img = Image.open(buf).convert("RGBA")
-    return np.array(img)
+    png_data = Image.open(path)
+    return np.array(png_data.getdata())
 
 
 def parse_sprites(scale_size: int = 32):
