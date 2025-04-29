@@ -13,6 +13,7 @@ class PieceLocator():
         if len(self.corners) == 4:
             self.grid = gen_grid(self.corners, 8)
             self.has_corners = True
+            print("PieceLoactor: board initialized")
 
     def get_piece_locations(self, piece_boxes):
         if not self.has_corners:
