@@ -1,5 +1,4 @@
 import math
-from collections import deque, Counter
 from typing import Optional
 
 import numpy as np
@@ -7,7 +6,8 @@ import pygame
 from pygame.time import Clock
 import cv2
 
-from .computer_vision_panel import ComputerVisionPanel
+from .computer_vision_panel import ComputerVisionPanel, AnnotationAggregator, bgr2rgb, \
+    translate_camera_coords_to_panel_coords
 from .stockfish_api import StockfishPlayer
 from .assets.parse_sprites import parse_sprites
 
@@ -527,6 +527,7 @@ def fit_to_scale(surface, target_rect):
     y = target_rect.y + (target_h - new_h) // 2
     return scaled, x, y
 
+
 def get_grid_overlay(frame: np.ndarray, grid_size: int = 8, pattern_size: tuple[int, int] = (7, 7)) -> np.ndarray:
     """
     Detect the chessboard in `frame`, compute the homography,
@@ -579,51 +580,6 @@ def get_grid_overlay(frame: np.ndarray, grid_size: int = 8, pattern_size: tuple[
     return overlay
 
 
-class AnnotationAggregator:
-    """
-    Aggregate a sliding window of board estimations (mapping squares to piece labels) and
-    compute a stable, averaged board state. Tracks changes to minimize re-rendering.
-    """
-
-    def __init__(self, n_frames: int = 50):
-        self.n_frames = n_frames
-        self.buffer: deque[dict[tuple[int, int], str]] = deque(maxlen=n_frames)
-        self.board_size = 8
-        self.last_state: list[list[Optional[str]]] = [[None] * 8 for _ in range(8)]
-
-    def add_frame(self, frame_estimate: dict[tuple[int, int], str]):
-        self.buffer.append(frame_estimate)
-
-    def _compute_aggregate(self) -> list[list[Optional[str]]]:
-        counts: dict[tuple[int, int], Counter] = {}
-        for frame in self.buffer:
-            for pos, label in frame.items():
-                counts.setdefault(pos, Counter())[label] += 1
-        thresh = (len(self.buffer) // 2) + 1
-        agg_state = [[None] * self.board_size for _ in range(self.board_size)]
-        for (row, col), counter in counts.items():
-            label, freq = counter.most_common(1)[0]
-            if freq >= thresh:
-                agg_state[row][col] = label
-        return agg_state
-
-    def get_changes(self) -> dict[tuple[int, int], Optional[str]]:
-        new_state = self._compute_aggregate()
-        diffs: dict[tuple[int, int], Optional[str]] = {}
-        for r in range(self.board_size):
-            for c in range(self.board_size):
-                old = self.last_state[r][c]
-                now = new_state[r][c]
-                if old != now:
-                    diffs[(r, c)] = now
-        self.last_state = new_state
-        return diffs
-
-    def reset(self):
-        self.buffer.clear()
-        self.last_state = [[None] * self.board_size for _ in range(self.board_size)]
-
-
 class CVChessGame:
     def __init__(self, model_path: str, video_capture_device: int, capture_orientation: str = 'landscape'):
         self.board_state = ChessBoardState()
@@ -652,6 +608,7 @@ class CVChessGame:
         display_size = (800, 1000)
         self.cv_panel = ComputerVisionPanel(display_size, model_path, video_capture_device, capture_orientation)
         self.last_annotated = None
+        self.annotation_aggregator = AnnotationAggregator(n_annotations=50)
 
     def move_piece(self, src: tuple[int, int], dst: tuple[int, int]):
         piece = self.board_state.pieces.piece_state[src[0], src[1]]
@@ -753,6 +710,8 @@ class CVChessGame:
         initial_time = timer_input.run(screen)
         if initial_time is None:  # User closed the window
             return
+
+        old_annotation_frame = None
 
         self.white_time = initial_time
         self.black_time = initial_time
@@ -888,9 +847,39 @@ class CVChessGame:
 
             # Render ComputerVisionPanel frames from cv and model
             annotation = self.cv_panel.pull_for_render()
-            if annotation is not None:
-                annotation_frame = annotation[0]
+            if annotation[0] is not None:
+                annotation_frame = annotation[0].copy()
+                old_annotation_frame = annotation_frame.copy()
+
                 annotated_surface = np_to_surface(annotation_frame)
+
+                if annotation[1] is not None:
+                    annotation_rect = annotation[1]
+                    annotation_text = annotation[2]
+
+                    for _, (x1, y1), (x2, y2), color, thickness in annotation_rect:
+                        color = bgr2rgb(color)
+                        panel_x1, panel_y1 = translate_camera_coords_to_panel_coords(x1, y1,
+                                                                                   self.cv_panel.cap_width,
+                                                                                   self.cv_panel.cap_height)
+                        panel_x2, panel_y2 = translate_camera_coords_to_panel_coords(x2, y2,
+                                                                                     self.cv_panel.cap_width,
+                                                                                     self.cv_panel.cap_height)
+                        w, h = panel_x2 - panel_x1, panel_y2 - panel_y1
+                        pygame.draw.rect(annotated_surface, color, (panel_x1, panel_y1, w, h), thickness)
+
+                    for _, text, (x, y), color in annotation_text:
+                        color = bgr2rgb(color)
+                        panel_x, panel_y = translate_camera_coords_to_panel_coords(x, y,
+                                                                                   self.cv_panel.cap_width,
+                                                                                   self.cv_panel.cap_height)
+                        text_surface = self.font.render(text, True, color)
+                        annotated_surface.blit(text_surface, (panel_x, panel_y))
+
+                scaled, x, y = fit_to_scale(annotated_surface, pygame.Rect(0, 0, half_width, screen_height))
+                screen.blit(scaled, (x, y))
+            elif old_annotation_frame is not None:
+                annotated_surface = np_to_surface(old_annotation_frame)
                 scaled, x, y = fit_to_scale(annotated_surface, pygame.Rect(0, 0, half_width, screen_height))
                 screen.blit(scaled, (x, y))
 
