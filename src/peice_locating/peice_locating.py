@@ -3,15 +3,13 @@ import pygame
 
 letter_map = {0: 'a', 1: 'b', 2: 'c', 3: 'd', 4: 'e', 5: 'f', 6: 'g', 7: 'h'}
 
-
-class PeiceLocator():
+class PieceLocator():
     def __init__(self):
         self.corners = []
         self.has_corners = False
-        self.scrach_surf = pygame.Surface((2000, 2000))
 
     def add_corner(self, point: pygame.Vector2):
-        corners.append(point)
+        self.corners.append(point)
         if len(self.corners) == 4:
             self.grid = gen_grid(self.corners, 8)
             self.has_corners = True
@@ -70,7 +68,7 @@ def draw_grid(grid: list[list[pygame.Vector2]], surf: pygame.Surface):
         for x in range(len(grid[y])):
             point = grid[y][x]
             pygame.draw.circle(surf, (150 + 5 * x + 5 * y, 150 + 5 * x + 5 * y, 150 + 5 * x + 5 * y), point, 5)
-f
+
 
 def get_center_point(rect: pygame.Rect):
     x = (rect.left + rect.left + rect.width) / 2
@@ -79,16 +77,15 @@ def get_center_point(rect: pygame.Rect):
 
 
 def get_cell(point: pygame.Vector2, grid: list[list[pygame.Vector2]]):
-    global letter_map
-    for row in range(len(grid) - 1):
-        for col in range(len(grid[row]) - 1):
+    for row in range(len(grid)-1):
+        for col in range(len(grid[row])-1):
             if is_in_cell(point, grid, row, col):
-                return letter_map[col] + str(row + 1)
+                return [row, col]
     return (-1, -1)
 
 
 def is_in_cell(point: pygame.Vector2, grid: list[list[pygame.Vector2]], row: int, col: int):
-    global scrach_surf
+    scrach_surf = pygame.Surface((2000, 2000))
     points = [((grid[row][col] + grid[row][col + 1]) / 2), ((grid[row + 1][col] + grid[row + 1][col + 1]) / 2),
               ((grid[row][col] + grid[row + 1][col]) / 2), ((grid[row][col + 1] + grid[row + 1][col + 1]) / 2)]
     tile = pygame.draw.polygon(scrach_surf, (0, 0, 0), points)

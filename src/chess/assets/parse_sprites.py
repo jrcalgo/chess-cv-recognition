@@ -1,7 +1,6 @@
 import os
 import pygame
 
-
 def parse_sprites(scale_size: int = 32):
     # Make sure you’ve called pygame.init() before this runs!
     this_dir = os.path.dirname(__file__)

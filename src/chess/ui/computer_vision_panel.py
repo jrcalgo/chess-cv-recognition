@@ -62,6 +62,7 @@ class ComputerVisionPanel:
         self.display_size = display_size
 
         self.model = YOLO(model_path, 'detect')
+        self.cur_prediction = None
         self.cap = cv2.VideoCapture(video_capture_device, cv2.CAP_DSHOW)
         if not self.cap.isOpened():
             self.cap = cv2.VideoCapture(video_capture_device, cv2.CAP_AVFOUNDATION)
@@ -182,6 +183,7 @@ class ComputerVisionPanel:
 
                     x1_smoothed = cx_smoothed - width // 2
                     y1_smoothed = cy_smoothed - height // 2
+
                     x2_smoothed = cx_smoothed + width // 2
                     y2_smoothed = cy_smoothed + height // 2
 
