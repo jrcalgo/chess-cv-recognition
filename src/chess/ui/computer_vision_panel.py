@@ -55,7 +55,7 @@ piece_colors = {
 
 class ComputerVisionPanel:
     def __init__(self, display_size: tuple[int, int], model_path: str, video_capture_device: int,
-                 capture_orientation: str):
+                 capture_orientation: str, n_location_boards: int = 5):
         assert capture_orientation in ('landscape', 'portrait'), \
             "orientation must be `landscape` or `portrait`"
         self.orientation = 1 if capture_orientation.__eq__('portrait') else 0
@@ -76,9 +76,11 @@ class ComputerVisionPanel:
         self.running = False
 
         self.job_queue = queue.Queue(maxsize=1)
-        self.result_queue = queue.Queue(maxsize=1)
+        self.render_result_queue = queue.Queue(maxsize=1)
 
-        # launch threads
+        self.piece_location_queue = queue.Queue(maxsize=n_location_boards)
+
+        # launch cv2/YOLO threads
         threading.Thread(target=self._capture_loop, daemon=True).start()
         threading.Thread(target=self._inference_loop, daemon=True).start()
 
@@ -87,9 +89,13 @@ class ComputerVisionPanel:
         Always returns a 2-tuple; components may be None. Handle accordingly
         """
         try:
-            return self.result_queue.get_nowait()
+            return self.render_result_queue.get_nowait()
         except queue.Empty:
             return None, None, None
+
+    def acquire_piece_location(self):
+        # launch piece location determination function in separate thread
+        threading.Thread(target=self._acquire_piece_location, daemon=True).start()
 
     def quit(self):
         self.running = False
@@ -114,6 +120,10 @@ class ComputerVisionPanel:
             except queue.Full:
                 _ = self.job_queue.get_nowait()
                 self.job_queue.put_nowait(frame)
+
+    def _acquire_piece_location(self):
+        # TODO: output piece locations as an 8x8 ndarray
+        pass
 
     def _inference_loop(self):
         history = collections.defaultdict(lambda: collections.deque(maxlen=10))
@@ -183,15 +193,15 @@ class ComputerVisionPanel:
 
             if not references:
                 try:
-                    _, last_rects, last_texts = self.result_queue.get_nowait()
+                    _, last_rects, last_texts = self.render_result_queue.get_nowait()
                     references, text = last_rects, last_texts
                 except queue.Empty:
                     pass
             try:
-                self.result_queue.put_nowait((frame, references, text))
+                self.render_result_queue.put_nowait((frame, references, text))
             except queue.Full:
-                _ = self.result_queue.get_nowait()
-                self.result_queue.put_nowait((frame, references, text))
+                _ = self.render_result_queue.get_nowait()
+                self.render_result_queue.put_nowait((frame, references, text))
 
             # Print detected pieces
             print("🧠 Detected pieces this frame:")

@@ -1,13 +1,15 @@
 import os
 from pathlib import Path
 
+import pygame
+
 from chess.cv_chess_game import CVChessGame
 from utils.configuration import load_json_config
 
 this_file = Path(__file__).resolve()
 project_root = this_file.parent.parent
 YOLO_MODEL_DIR = os.path.join(project_root, 'models')
-CONFIG_PATH = os.path.join(project_root, 'config.json')
+CONFIG_PATH = os.path.join(this_file.parent, 'config.json')
 
 
 def main(stats=False):
@@ -16,6 +18,7 @@ def main(stats=False):
     video_capture_device = config['cv']['video_capture_device']
     capture_orientation = str(config['cv']['capture_orientation']).lower()
 
+    pygame.init()
     game = CVChessGame(yolo_model_path, video_capture_device, capture_orientation)
     game.run_game()
 
