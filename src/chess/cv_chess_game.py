@@ -397,9 +397,6 @@ class ChessBoardState:
             return False
         return not self._has_any_safe_move(color)
 
-    def get_state_as_dict():
-        
-
 
 class TimerInputScreen:
     def __init__(self):
@@ -520,6 +517,7 @@ def np_to_surface(img_array: np.ndarray) -> pygame.Surface:
     elif img_array.ndim == 3 and img_array.shape[2] == 4:
         surface = pygame.image.frombuffer(img_array.tobytes(), (width, height), 'RGBA')
         return surface.convert_alpha()
+    return pygame.Surface((0,0))
 
 
 def fit_to_scale(surface, target_rect):
