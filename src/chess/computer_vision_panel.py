@@ -1,4 +1,5 @@
 import collections
+import queue
 import threading
 import time
 from collections import deque, Counter
@@ -11,7 +12,7 @@ from ultralytics import YOLO
 
 def bgr2rgb(bgr):
     b, g, r = bgr
-    return (r, g, b)
+    return r, g, b
 
 
 def translate_camera_coords_to_panel_coords(x, y, camera_width, camera_height):
@@ -62,15 +63,21 @@ class ComputerVisionPanel:
 
         self.model = YOLO(model_path, 'detect')
         self.cur_prediction = None
-        self.cap = cv2.VideoCapture(video_capture_device)
+        self.cap = cv2.VideoCapture(video_capture_device, cv2.CAP_DSHOW)
+        if not self.cap.isOpened():
+            self.cap = cv2.VideoCapture(video_capture_device, cv2.CAP_AVFOUNDATION)
+            if not self.cap.isOpened():
+                self.cap = cv2.VideoCapture(video_capture_device, cv2.CAP_V4L2)
+                if not self.cap.isOpened():
+                    raise Exception("Failed to open video capture device")
 
         self.cap_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         self.cap_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
         self.running = False
 
-        self.lock = threading.Lock()
-        self.latest_annotation = {0: deque(maxlen=1), 1: deque(), 2: deque()}  # 0: frame, 1: rect, 2: text
+        self.job_queue = queue.Queue(maxsize=1)
+        self.result_queue = queue.Queue(maxsize=1)
 
         # launch threads
         threading.Thread(target=self._capture_loop, daemon=True).start()
@@ -80,15 +87,10 @@ class ComputerVisionPanel:
         """
         Always returns a 2-tuple; components may be None. Handle accordingly
         """
-        if len(self.latest_annotation[0]) > 0:
-            with self.lock:
-                frame = self.latest_annotation[0].popleft()
-                rect = self.latest_annotation[1].popleft() if len(self.latest_annotation[1]) > 0 else None
-                text = self.latest_annotation[2].popleft() if len(self.latest_annotation[2]) > 0 else None
-
-            return frame, rect, text
-
-        return None, None, None
+        try:
+            return self.result_queue.get_nowait()
+        except queue.Empty:
+            return None, None, None
 
     def quit(self):
         self.running = False
@@ -96,9 +98,6 @@ class ComputerVisionPanel:
     def _maybe_to_portrait(self, frame: np.ndarray):
         if self.orientation == 1:
             frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
-        if self.display_size is not None:
-            width, height = self.display_size
-            frame = cv2.resize(frame, (width, height), interpolation=cv2.INTER_LINEAR)
         return frame
 
     def _capture_loop(self):
@@ -111,8 +110,11 @@ class ComputerVisionPanel:
 
             frame = self._maybe_to_portrait(frame)
 
-            with self.lock:
-                self.latest_annotation[0].append(frame.copy())
+            try:
+                self.job_queue.put_nowait(frame)
+            except queue.Full:
+                _ = self.job_queue.get_nowait()
+                self.job_queue.put_nowait(frame)
 
     def _inference_loop(self):
         history = collections.defaultdict(lambda: collections.deque(maxlen=10))
@@ -122,13 +124,12 @@ class ComputerVisionPanel:
         self.running = True
 
         while self.cap.isOpened():
-            if self.latest_annotation[0] is None or len(self.latest_annotation[0]) == 0:
-                time.sleep(0.1)
+            try:
+                frame = self.job_queue.get_nowait()
+            except queue.Empty:
                 continue
 
-            frame = self.latest_annotation[0].copy().popleft()
             results = self.model.predict(source=frame, conf=0.7, iou=0.5, save=False, stream=True)
-            annotated_frame = frame.copy()
 
             references = []
             text = []
@@ -163,7 +164,7 @@ class ComputerVisionPanel:
                         kalman_filters[center_id].statePre = np.array([[cx], [cy], [0], [0]], np.float32)
 
                     kf = kalman_filters[center_id]
-                    prediction = kf.predict()
+                    _ = kf.predict()
 
                     measurement = np.array([[np.float32(cx)], [np.float32(cy)]], np.float32)
                     corrected = kf.correct(measurement)
@@ -182,8 +183,17 @@ class ComputerVisionPanel:
                                  color, 2))
                     text.append((f'{label} {conf:.2f}', (x1_smoothed, y1_smoothed - 10), color))
 
-            self.latest_annotation[1].append(references)
-            self.latest_annotation[2].append(text)
+            if not references:
+                try:
+                    _, last_rects, last_texts = self.result_queue.get_nowait()
+                    references, text = last_rects, last_texts
+                except queue.Empty:
+                    pass
+            try:
+                self.result_queue.put_nowait((frame, references, text))
+            except queue.Full:
+                _ = self.result_queue.get_nowait()
+                self.result_queue.put_nowait((frame, references, text))
 
             # Print detected pieces
             print("🧠 Detected pieces this frame:")

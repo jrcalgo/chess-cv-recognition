@@ -1,8 +1,8 @@
 pygame
 numpy
 matplotlib
-cairosvg
 seaborn
 pandas
 stockfish
 ultralytics
+opencv-python
