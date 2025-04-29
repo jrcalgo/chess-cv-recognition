@@ -741,100 +741,6 @@ class CVChessGame:
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
                     move_made = True
 
-            if not self.piece_locator.has_corners:
-                continue
-
-            if not move_made:
-                continue
-
-            cur_piece_locations = self.piece_locator.get_piece_locations(self.cv_panel.cur_prediction)
-            move = self.get_move(cur_piece_locations)
-            if move == None:
-                print("invalid move")
-                continue
-
-
-            if self.board_state.current_turn == 'w':
-                src = move[0]
-                dst = move[1]
-                piece = str(self.board_state.pieces.piece_state[src])
-                moved = False
-
-                # 1) Castling
-                current_turn = self.board_state.current_turn
-                if not self.white_castled and current_turn == 'w':
-                    if piece[1] == 'K' and abs(dst[1] - src[1]) == 2:
-                        if dst[1] > src[1]:
-                            self.castle_kingside()
-                            moved = True
-                        else:
-                            self.castle_queenside()
-                            moved = True
-                    self.white_castled = True
-
-                elif not self.black_castled and current_turn == 'b':
-                    if piece[1] == 'K' and abs(dst[1] - src[1]) == 2:
-                        if dst[1] > src[1]:
-                            self.castle_kingside()
-                            moved = True
-                        else:
-                            self.castle_queenside()
-                            moved = True
-                    self.black_castled = True
-
-                # 2) En passant
-                if not moved and piece[1] == 'P' and \
-                        self.board_state.pieces.piece_state[dst] == "" and \
-                        dst[0] == src[0] + (-1 if piece[0] == 'w' else 1) and \
-                        abs(dst[1] - src[1]) == 1:
-                    moved = self.board_state.en_passant(src, dst)
-
-                # 3) Normal move (with check status checking)
-                if not moved and self.check_move_legality(piece, src, dst):
-                    # snapshot everything we’ll need to restore
-                    old_board = self.board_state.pieces.piece_state.copy()
-                    old_last_move = self.board_state.last_move
-                    old_turn = current_turn
-
-                    self.move_piece(src, dst)
-
-                    # check whether *that same color* is in check
-                    if self.check('w' if self.board_state.current_turn == 'b' else 'b'):
-                        self.board_state.pieces.piece_state = old_board
-                        self.board_state.last_move = old_last_move
-                        self.board_state.current_turn = old_turn
-                    else:
-                        moved = True
-                        self.check_status = False
-
-                    self.piece_selection = None
-
-                    # after ANY legal move, test for opponent check or end-game
-                    if moved:
-                        if self.check('w' if self.board_state.current_turn == 'w' else 'b'):
-                            self.check_status = True
-
-                        if self.checkmate():
-                            self.game_over = True
-                            self.winner = "Black" if self.board_state.current_turn == 'w' else "White"
-
-                        elif self.stalemate():
-                            self.game_over = True
-                            self.winner = "Draw"
-                def _square_location(row, col):
-                    x = col * self.square_size + self.square_size // 2
-                    y = row * self.square_size + self.square_size // 2
-                    return x, y
-
-                source_and_dest = self.black_stockfish_player.get_stockfish_move(
-                    self.board_state.pieces.piece_state, self.white_time, self.black_time)
-                source_x, source_y = _square_location(source_and_dest[0][0], source_and_dest[0][1])
-                target_x, target_y = _square_location(source_and_dest[1][0], source_and_dest[1][1])
-
-                self._draw_stockfish_move_arrow(screen, source_x, source_y, target_x, target_y)
-                self.black_move = source_and_dest
-            else:
-                self.move_piece(self.black_move[0], self.black_move[1])
 
             current_time = pygame.time.get_ticks()
             time_delta = (current_time - self.last_time) / 1000  # Converts to seconds
@@ -948,6 +854,102 @@ class CVChessGame:
 
             pygame.display.flip()
             clock.tick(60)
+
+
+            if not self.piece_locator.has_corners:
+                continue
+
+            if not move_made:
+                continue
+
+            cur_piece_locations = self.piece_locator.get_piece_locations(self.cv_panel.cur_prediction)
+            move = self.get_move(cur_piece_locations)
+            if move == None:
+                print("invalid move")
+                continue
+
+
+            if self.board_state.current_turn == 'w':
+                src = move[0]
+                dst = move[1]
+                piece = str(self.board_state.pieces.piece_state[src])
+                moved = False
+
+                # 1) Castling
+                current_turn = self.board_state.current_turn
+                if not self.white_castled and current_turn == 'w':
+                    if piece[1] == 'K' and abs(dst[1] - src[1]) == 2:
+                        if dst[1] > src[1]:
+                            self.castle_kingside()
+                            moved = True
+                        else:
+                            self.castle_queenside()
+                            moved = True
+                    self.white_castled = True
+
+                elif not self.black_castled and current_turn == 'b':
+                    if piece[1] == 'K' and abs(dst[1] - src[1]) == 2:
+                        if dst[1] > src[1]:
+                            self.castle_kingside()
+                            moved = True
+                        else:
+                            self.castle_queenside()
+                            moved = True
+                    self.black_castled = True
+
+                # 2) En passant
+                if not moved and piece[1] == 'P' and \
+                        self.board_state.pieces.piece_state[dst] == "" and \
+                        dst[0] == src[0] + (-1 if piece[0] == 'w' else 1) and \
+                        abs(dst[1] - src[1]) == 1:
+                    moved = self.board_state.en_passant(src, dst)
+
+                # 3) Normal move (with check status checking)
+                if not moved and self.check_move_legality(piece, src, dst):
+                    # snapshot everything we’ll need to restore
+                    old_board = self.board_state.pieces.piece_state.copy()
+                    old_last_move = self.board_state.last_move
+                    old_turn = current_turn
+
+                    self.move_piece(src, dst)
+
+                    # check whether *that same color* is in check
+                    if self.check('w' if self.board_state.current_turn == 'b' else 'b'):
+                        self.board_state.pieces.piece_state = old_board
+                        self.board_state.last_move = old_last_move
+                        self.board_state.current_turn = old_turn
+                    else:
+                        moved = True
+                        self.check_status = False
+
+                    self.piece_selection = None
+
+                    # after ANY legal move, test for opponent check or end-game
+                    if moved:
+                        if self.check('w' if self.board_state.current_turn == 'w' else 'b'):
+                            self.check_status = True
+
+                        if self.checkmate():
+                            self.game_over = True
+                            self.winner = "Black" if self.board_state.current_turn == 'w' else "White"
+
+                        elif self.stalemate():
+                            self.game_over = True
+                            self.winner = "Draw"
+                def _square_location(row, col):
+                    x = col * self.square_size + self.square_size // 2
+                    y = row * self.square_size + self.square_size // 2
+                    return x, y
+
+                source_and_dest = self.black_stockfish_player.get_stockfish_move(
+                    self.board_state.pieces.piece_state, self.white_time, self.black_time)
+                source_x, source_y = _square_location(source_and_dest[0][0], source_and_dest[0][1])
+                target_x, target_y = _square_location(source_and_dest[1][0], source_and_dest[1][1])
+
+                self._draw_stockfish_move_arrow(screen, source_x, source_y, target_x, target_y)
+                self.black_move = source_and_dest
+            else:
+                self.move_piece(self.black_move[0], self.black_move[1])
 
         if self.game_over:
             pygame.time.wait(10000)
