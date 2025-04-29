@@ -711,7 +711,7 @@ class CVChessGame:
         if initial_time is None:  # User closed the window
             return
 
-        old_annotation_frame = None
+        old_annotation_surface = None
 
         self.white_time = initial_time
         self.black_time = initial_time
@@ -849,15 +849,18 @@ class CVChessGame:
             annotation = self.cv_panel.pull_for_render()
             if annotation[0] is not None:
                 annotation_frame = annotation[0].copy()
-                old_annotation_frame = annotation_frame.copy()
 
-                annotated_surface = np_to_surface(annotation_frame)
+                annotation_frame = cv2.cvtColor(annotation_frame, cv2.COLOR_BGR2RGB)
+                annotation_frame = cv2.resize(annotation_frame, (500, 800), interpolation=cv2.INTER_LINEAR)
+
+                annotated_surface = pygame.image.frombuffer(annotation_frame.tobytes(), (500, 800), 'RGB').convert()
+                old_annotation_surface = annotated_surface.copy()
 
                 if annotation[1] is not None:
                     annotation_rect = annotation[1]
                     annotation_text = annotation[2]
 
-                    for _, (x1, y1), (x2, y2), color, thickness in annotation_rect:
+                    for (x1, y1), (x2, y2), color, thickness in annotation_rect:
                         color = bgr2rgb(color)
                         panel_x1, panel_y1 = translate_camera_coords_to_panel_coords(x1, y1,
                                                                                    self.cv_panel.cap_width,
@@ -868,7 +871,7 @@ class CVChessGame:
                         w, h = panel_x2 - panel_x1, panel_y2 - panel_y1
                         pygame.draw.rect(annotated_surface, color, (panel_x1, panel_y1, w, h), thickness)
 
-                    for _, text, (x, y), color in annotation_text:
+                    for text, (x, y), color in annotation_text:
                         color = bgr2rgb(color)
                         panel_x, panel_y = translate_camera_coords_to_panel_coords(x, y,
                                                                                    self.cv_panel.cap_width,
@@ -878,9 +881,8 @@ class CVChessGame:
 
                 scaled, x, y = fit_to_scale(annotated_surface, pygame.Rect(0, 0, half_width, screen_height))
                 screen.blit(scaled, (x, y))
-            elif old_annotation_frame is not None:
-                annotated_surface = np_to_surface(old_annotation_frame)
-                scaled, x, y = fit_to_scale(annotated_surface, pygame.Rect(0, 0, half_width, screen_height))
+            elif old_annotation_surface is not None:
+                scaled, x, y = fit_to_scale(old_annotation_surface, pygame.Rect(0, 0, half_width, screen_height))
                 screen.blit(scaled, (x, y))
 
             # Draw timers and turn indicators, shifted right by half_width

@@ -176,9 +176,9 @@ class ComputerVisionPanel:
 
                     color = piece_colors.get(label, (0, 255, 0))
 
-                    references.append((annotated_frame, (x1_smoothed, y1_smoothed), (x2_smoothed, y2_smoothed),
+                    references.append(((x1_smoothed, y1_smoothed), (x2_smoothed, y2_smoothed),
                                  color, 2))
-                    text.append((annotated_frame, f'{label} {conf:.2f}', (x1_smoothed, y1_smoothed - 10), color))
+                    text.append((f'{label} {conf:.2f}', (x1_smoothed, y1_smoothed - 10), color))
 
             self.latest_annotation[1].append(references)
             self.latest_annotation[2].append(text)
