@@ -936,6 +936,10 @@ class CVChessGame:
                         elif self.stalemate():
                             self.game_over = True
                             self.winner = "Draw"
+                    else:
+                        print("invalid move try again")
+                        continue
+
                 def _square_location(row, col):
                     x = col * self.square_size + self.square_size // 2
                     y = row * self.square_size + self.square_size // 2
