@@ -47,6 +47,7 @@ class ComputerVisionPanel:
         self.orientation = 1 if capture_orientation.__eq__('portrait') else 0
 
         self.model = YOLO(model_path, 'detect')
+        self.cur_prediction = None
         self.cap = cv2.VideoCapture(video_capture_device)
         self.running = False
         self.motion_thresh = 10.0
@@ -147,6 +148,7 @@ class ComputerVisionPanel:
                         'height': int(height)
                     }
                     piece_locations.append(piece_data)
+                    self.cur_prediction = piece_locations
 
                     color = piece_colors.get(label, (0, 255, 0))
 

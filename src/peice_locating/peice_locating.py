@@ -3,7 +3,7 @@ import pygame
 
 letter_map = {0:'a', 1:'b', 2:'c', 3:'d', 4:'e', 5:'f', 6:'g', 7:'h'}
 
-class PeiceLocator():
+class PieceLocator():
     def __init__(self):
         self.corners = []
         self.has_corners = False
@@ -74,11 +74,10 @@ def get_center_point(rect: pygame.Rect):
     return pygame.Vector2(x, y)
 
 def get_cell(point: pygame.Vector2, grid: list[list[pygame.Vector2]]):
-    global letter_map
     for row in range(len(grid)-1):
         for col in range(len(grid[row])-1):
             if is_in_cell(point, grid, row, col):
-                return letter_map[col] + str(row+1)
+                return [row, col]
     return (-1, -1)
 
 def is_in_cell(point: pygame.Vector2, grid: list[list[pygame.Vector2]], row: int, col: int):

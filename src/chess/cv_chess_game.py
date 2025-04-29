@@ -2,6 +2,7 @@ import math
 from collections import deque, Counter
 from typing import Optional
 
+
 import numpy as np
 import pygame
 from pygame.time import Clock
@@ -10,6 +11,7 @@ import cv2
 from .computer_vision_panel import ComputerVisionPanel
 from .stockfish_api import StockfishPlayer
 from .assets.parse_sprites import parse_sprites
+from ..peice_locating.peice_locating import PieceLocator
 
 
 class ChessPieces:
@@ -395,6 +397,9 @@ class ChessBoardState:
             return False
         return not self._has_any_safe_move(color)
 
+    def get_state_as_dict():
+        
+
 
 class TimerInputScreen:
     def __init__(self):
@@ -627,6 +632,7 @@ class AnnotationAggregator:
 class CVChessGame:
     def __init__(self, model_path: str, video_capture_device: int, capture_orientation: str = 'landscape'):
         self.board_state = ChessBoardState()
+        self.piece_locator = PieceLocator()
         self.piece_selection: Optional[tuple[int, int]] = None
         self.square_size = 100
         self.white_pieces, self.black_pieces = parse_sprites()
@@ -769,6 +775,17 @@ class CVChessGame:
         self.black_stockfish_player = StockfishPlayer(self.board_state.pieces.piece_state)
 
         while running and not self.game_over:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    self.piece_locator.add_corner(pygame.Vector2(pygame.mouse.get_pos()))
+
+            if not self.piece_locator.has_corners:
+                continue
+
+            cur_piece_locations = self.piece_locator.get_piece_locations(self.cv_panel.cur_prediction)
+            move = self.get_move(cur_piece_locations)
             current_time = pygame.time.get_ticks()
             time_delta = (current_time - self.last_time) / 1000  # Converts to seconds
             self.last_time = current_time
@@ -953,6 +970,32 @@ class CVChessGame:
 
         self.cv_panel.quit()
         pygame.quit()
+
+    def get_move(self, new_state):
+        prev_state = self.get_board_state().pieces.piece_state
+        prev_state_dict = {}
+        for i in range(len(prev_state)):
+            for j in range(len(prev_state[i])):
+                piece = prev_state[i][j]
+                if piece == "":
+                    continue
+                if piece not in prev_state_dict:
+                    prev_state_dict[piece] = []
+                tile = [i, j]
+                prev_state_dict[piece].append(tile)
+        for piece_type in new_state:
+            for i in range(len(new_state[piece_type])):
+                loc = new_state[piece_type][i]
+                row = loc[0]
+                col = loc[1]
+                if prev_state[row][col] == "":
+                    src = None
+                    for piece in prev_state_dict[piece_type]:
+                        if piece not in new_state[piece_type]:
+                            src = piece
+                            break
+                    return [[row, col], src]
+
 
     def get_board_state(self):
         return self.board_state
