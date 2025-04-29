@@ -802,7 +802,7 @@ class CVChessGame:
             if not move_made:
                 continue
 
-            cur_piece_locations = self.piece_locator.get_piece_locations(self.cv_panel.cur_prediction)
+            cur_piece_locations = self.piece_locator.get_piece_locations(self.cv_panel.piece_location_queue.get())
             move = self.get_move(cur_piece_locations)
             if move == None:
                 print("invalid move")
