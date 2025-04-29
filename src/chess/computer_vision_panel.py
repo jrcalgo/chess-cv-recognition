@@ -1,11 +1,24 @@
 import collections
 import threading
 import time
-from collections import deque
+from collections import deque, Counter
+from typing import Optional
 
 import cv2
 import numpy as np
 from ultralytics import YOLO
+
+
+def bgr2rgb(bgr):
+    b, g, r = bgr
+    return (r, g, b)
+
+
+def translate_camera_coords_to_panel_coords(x, y, camera_width, camera_height):
+    panel_x = int(x * 500 / camera_width)
+    panel_y = int(y * 800 / camera_height)
+    return panel_x, panel_y
+
 
 def create_kalman_filter():
     kf = cv2.KalmanFilter(4, 2)
@@ -45,19 +58,22 @@ class ComputerVisionPanel:
         assert capture_orientation in ('landscape', 'portrait'), \
             "orientation must be `landscape` or `portrait`"
         self.orientation = 1 if capture_orientation.__eq__('portrait') else 0
+        self.display_size = display_size
 
         self.model = YOLO(model_path, 'detect')
         self.cur_prediction = None
         self.cap = cv2.VideoCapture(video_capture_device)
-        self.running = False
-        self.motion_thresh = 10.0
 
-        self.display_size = display_size
+        self.cap_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        self.cap_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+        self.running = False
 
         self.lock = threading.Lock()
-        self.latest_annotation = [deque(maxlen=1) for _ in range(3)]  # 0: frame, 1: rect, 2: text
+        self.latest_annotation = {0: deque(maxlen=1), 1: deque(), 2: deque()}  # 0: frame, 1: rect, 2: text
 
         # launch threads
+        threading.Thread(target=self._capture_loop, daemon=True).start()
         threading.Thread(target=self._inference_loop, daemon=True).start()
 
     def pull_for_render(self):
@@ -66,7 +82,13 @@ class ComputerVisionPanel:
         """
         if len(self.latest_annotation[0]) > 0:
             with self.lock:
-                return self.latest_annotation[0].popleft(), self.latest_annotation[1].popleft()
+                frame = self.latest_annotation[0].popleft()
+                rect = self.latest_annotation[1].popleft() if len(self.latest_annotation[1]) > 0 else None
+                text = self.latest_annotation[2].popleft() if len(self.latest_annotation[2]) > 0 else None
+
+            return frame, rect, text
+
+        return None, None, None
 
     def quit(self):
         self.running = False
@@ -79,13 +101,7 @@ class ComputerVisionPanel:
             frame = cv2.resize(frame, (width, height), interpolation=cv2.INTER_LINEAR)
         return frame
 
-    def _inference_loop(self):
-        history = collections.defaultdict(lambda: collections.deque(maxlen=10))
-        kalman_filters = {}
-        piece_locations = []
-
-        self.running = True
-
+    def _capture_loop(self):
         while self.cap.isOpened():
             success, frame = self.cap.read()
             if not success or frame is None or frame.size == 0:
@@ -95,8 +111,27 @@ class ComputerVisionPanel:
 
             frame = self._maybe_to_portrait(frame)
 
+            with self.lock:
+                self.latest_annotation[0].append(frame.copy())
+
+    def _inference_loop(self):
+        history = collections.defaultdict(lambda: collections.deque(maxlen=10))
+        kalman_filters = {}
+        piece_locations = []
+
+        self.running = True
+
+        while self.cap.isOpened():
+            if self.latest_annotation[0] is None or len(self.latest_annotation[0]) == 0:
+                time.sleep(0.1)
+                continue
+
+            frame = self.latest_annotation[0].copy().popleft()
             results = self.model.predict(source=frame, conf=0.7, iou=0.5, save=False, stream=True)
             annotated_frame = frame.copy()
+
+            references = []
+            text = []
 
             for r in results:
                 for box in r.boxes:
@@ -137,29 +172,85 @@ class ComputerVisionPanel:
 
                     x1_smoothed = cx_smoothed - width // 2
                     y1_smoothed = cy_smoothed - height // 2
-                    x2_smoothed = cx_smoothed - width // 2
-                    y2_smoothed = cy_smoothed - height // 2
 
-                    piece_data = {
-                        'label': label,
-                        'x1': int(x1_smoothed),
-                        'y1': int(y1_smoothed),
-                        'width': int(width),
-                        'height': int(height)
-                    }
-                    piece_locations.append(piece_data)
-                    self.cur_prediction = piece_locations
+                    x2_smoothed = cx_smoothed + width // 2
+                    y2_smoothed = cy_smoothed + height // 2
 
                     color = piece_colors.get(label, (0, 255, 0))
 
-                    with self.lock:
-                        self.latest_annotation[0].append(frame)
-                        self.latest_annotation[1].append(cv2.rectangle(annotated_frame, (x1_smoothed, y1_smoothed), (x2_smoothed, y2_smoothed), color, 2))
-                        self.latest_annotation[2].append(cv2.putText(annotated_frame, f'{label} {conf:.2f}', (x1_smoothed, y1_smoothed - 10),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2))
+                    references.append(((x1_smoothed, y1_smoothed), (x2_smoothed, y2_smoothed),
+                                 color, 2))
+                    text.append((f'{label} {conf:.2f}', (x1_smoothed, y1_smoothed - 10), color))
+
+            self.latest_annotation[1].append(references)
+            self.latest_annotation[2].append(text)
+
+            # Print detected pieces
+            print("🧠 Detected pieces this frame:")
+            for piece in piece_locations:
+                print(piece)
 
             if not self.running:
                 break
 
         self.cap.release()
         cv2.destroyAllWindows()
+
+
+class AnnotationAggregation:
+    def __init__(self, n_annotations: int = 10):
+        self.n_annotations = n_annotations
+        self.buffer = deque(maxlen=n_annotations)
+        self.board_size = 8
+        self.last_state = [[None] * 8 for _ in range(8)]
+
+    def add_annotation(self, annotation):
+        self.buffer.append(annotation)
+
+    def _compute_aggregate(self):
+        counts = {}
+
+
+class AnnotationAggregator:
+    """
+    Aggregate a sliding window of board estimations (mapping squares to piece labels) and
+    compute a stable, averaged board state. Tracks changes to minimize re-rendering.
+    """
+
+    def __init__(self, n_annotations: int = 10):
+        self.n_annotations = n_annotations
+        self.buffer: deque[dict[tuple[int, int], str]] = deque(maxlen=n_annotations)
+        self.board_size = 8
+        self.last_state: list[list[Optional[str]]] = [[None] * 8 for _ in range(8)]
+
+    def add_annotation(self, annotation):
+        self.buffer.append(annotation)
+
+    def _compute_aggregate(self) -> list[list[Optional[str]]]:
+        counts: dict[tuple[int, int], Counter] = {}
+        for frame in self.buffer:
+            for pos, label in frame.items():
+                counts.setdefault(pos, Counter())[label] += 1
+        thresh = (len(self.buffer) // 2) + 1
+        agg_state = [[None] * self.board_size for _ in range(self.board_size)]
+        for (row, col), counter in counts.items():
+            label, freq = counter.most_common(1)[0]
+            if freq >= thresh:
+                agg_state[row][col] = label
+        return agg_state
+
+    def get_changes(self) -> dict[tuple[int, int], Optional[str]]:
+        new_state = self._compute_aggregate()
+        diffs: dict[tuple[int, int], Optional[str]] = {}
+        for r in range(self.board_size):
+            for c in range(self.board_size):
+                old = self.last_state[r][c]
+                now = new_state[r][c]
+                if old != now:
+                    diffs[(r, c)] = now
+        self.last_state = new_state
+        return diffs
+
+    def reset(self):
+        self.buffer.clear()
+        self.last_state = [[None] * self.board_size for _ in range(self.board_size)]
