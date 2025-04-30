@@ -5,7 +5,7 @@
         "_comment1": "Use absolute path to stockfish exe",
         "stockfish_exe_path": "<your_path_here>",
         "_comment2": "Depth of the stockfish best_move search",
-        "stockfish_depth": 15,
+        "stockfish_depth": 5,
         "_comment3": "Configure based on position of camera in relation to board",
         "bounding_box_bottom_ratio": 0.90
     },

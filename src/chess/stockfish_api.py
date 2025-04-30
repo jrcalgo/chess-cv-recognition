@@ -19,15 +19,16 @@ class StockfishPlayer:
                 "UCI_Elo": stockfish_elo
             })
 
-    def get_stockfish_move(self, recent_piece_state: np.ndarray) -> Optional[tuple[tuple[int, int], tuple[int, int]]]:
+    def get_stockfish_move(self, recent_piece_state: np.ndarray, white_time: int, black_time: int) -> Optional[tuple[tuple[int, int], tuple[int, int]]]:
         best_move = None
         try:
             # Convert ChessBoardState to FEN
             fen = self._board_to_fen(recent_piece_state)
+            print()
             # Update Stockfish with the current position
             self.stockfish.set_fen_position(fen)
             # Retrieve and return the best move
-            best_move = self.stockfish.get_best_move_time(5000)
+            best_move = self.stockfish.get_best_move(wtime=white_time, btime=black_time)
             print(f"original best_move: {best_move}")
         except StockfishException as e:
             print(f"Stockfish error: {e}")
