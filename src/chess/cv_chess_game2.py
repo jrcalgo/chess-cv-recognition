@@ -225,7 +225,7 @@ class RealtimeChessCV:
                     current_piece_color = _PIECE_COLORS[label]
 
                     # draw rectangle & label
-                    cv2.rectangle(annotated, (x1_s, y1_s), (x1_s + w, y1_s + h), (0, 255, 0), 2)
+                    cv2.rectangle(annotated, (x1_s, y1_s), (x1_s + w, y1_s + h), current_piece_color, 2)
                     cv2.putText(
                         annotated,
                         f"{label} {conf:.2f}",
