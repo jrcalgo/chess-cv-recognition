@@ -1,7 +1,10 @@
 {
     "cv": {
-        "yolo_model": "best.pt",
+        "yolo_model": "best_v2.pt",
         "video_capture_device": 3,
+        "stockfish_exe_path": "<your_path_here>"
+    },
+    "game": {
         "white_minutes": 10,
         "black_minutes": 10
     }

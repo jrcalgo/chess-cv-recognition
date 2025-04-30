@@ -4,14 +4,16 @@ from stockfish import Stockfish, StockfishException
 
 
 class StockfishPlayer:
-    def __init__(self, piece_state: np.ndarray):
+    def __init__(self, piece_state: np.ndarray, stockfish_exe_path: str):
         self.current_board: np.ndarray = piece_state
-        self.stockfish = Stockfish().__init__(parameters={
-            "Threads": 2,
-            "UCI_LimitStrength": False,
-            "Skill Level": 20,
-            "UCI_Elo": 2800
-        })
+        self.stockfish = Stockfish().__init__(
+            path=stockfish_exe_path,
+            parameters={
+                "Threads": 2,
+                "UCI_LimitStrength": False,
+                "Skill Level": 20,
+                "UCI_Elo": 2800
+            })
 
     def get_stockfish_move(self, recent_piece_state: np.ndarray, white_time: int, black_time: int) -> tuple[tuple[int, int], tuple[int, int]]:
         best_move = None
@@ -22,10 +24,12 @@ class StockfishPlayer:
             self.stockfish.set_fen_position(fen)
             # Retrieve and return the best move
             best_move = self.stockfish.get_best_move(wtime=white_time, btime=black_time)
+            print(f"original best_move: {best_move}")
         except StockfishException as e:
             print(f"Stockfish error: {e}")
         finally:
-            return self._to_and_from(best_move)
+            resolved_best_move = self._to_and_from(best_move)
+            print(f"resolved_best_move: {resolved_best_move}")
 
     def _board_to_fen(self, piece_state: np.ndarray) -> str:
         """
@@ -65,4 +69,3 @@ class StockfishPlayer:
             col_to = ord(best_move[2]) - ord('a')
             row_to = 8 - int(best_move[3])
             return (col_from, row_from), (col_to, row_to)
-

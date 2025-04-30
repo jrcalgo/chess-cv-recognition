@@ -15,12 +15,14 @@ CONFIG_PATH = os.path.join(this_file.parent, 'config.json')
 def main(stats=None):
     config = load_json_config(CONFIG_PATH)
     yolo_model_path = os.path.join(YOLO_MODEL_DIR, config['cv']['yolo_model'])
-    video_capture_device = config['cv']['video_capture_device']
-    white_minutes = config['cv']['white_minutes']
-    black_minutes = config['cv']['black_minutes']
+    video_capture_device = int(config['cv']['video_capture_device'])
+    stockfish_exe_path = str(config['cv']['stockfish_exe_path'])
+    white_minutes = int(config['game']['white_minutes'])
+    black_minutes = int(config['game']['black_minutes'])
+
 
     pygame.init()
-    game = RealtimeChessCV(yolo_model_path, video_capture_device, white_minutes, black_minutes)
+    game = RealtimeChessCV(yolo_model_path, video_capture_device, stockfish_exe_path, white_minutes, black_minutes)
     game.run()
 
 

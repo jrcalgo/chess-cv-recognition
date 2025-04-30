@@ -73,7 +73,7 @@ class RealtimeChessCV:
     # OpenCV colours (BGR)
     _GRID_COLOUR = (0, 0, 255)
 
-    def __init__(self, model_path: str | Path, camera_index: int = 0, white_mins: int = 5, black_mins: int = 5):
+    def __init__(self, model_path: str | Path, camera_index: int = 0, stockfish_exe_path: str = "", white_mins: int = 5, black_mins: int = 5):
         # Player logic
         self._turn = "white"
         self._white_ms = white_mins * 60_000
@@ -82,7 +82,7 @@ class RealtimeChessCV:
         self._waiting_for_stockfish = False
         self._stockfish_arrow = None
         self._prev_np_board = np.full((8, 8), "", dtype=object)
-        self._stockfish_player = StockfishPlayer(self._prev_np_board)
+        self._stockfish_player = StockfishPlayer(self._prev_np_board, stockfish_exe_path)
 
         # Model and capture components
         self.model = YOLO(str(model_path))

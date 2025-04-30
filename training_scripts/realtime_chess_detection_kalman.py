@@ -9,7 +9,7 @@ import collections
 # Load your trained model
 this_file = Path(__file__).resolve()
 project_root = this_file.parent.parent
-YOLO_MODEL_DIR = os.path.join(project_root, 'models', 'best.pt')
+YOLO_MODEL_DIR = os.path.join(project_root, 'models', 'best_v2.pt')
 model = YOLO(YOLO_MODEL_DIR)
 
 # Open Elgato virtual camera (adjust index if needed)

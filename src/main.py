@@ -9,7 +9,7 @@ grid = None
 corners = []
 player_turn = True
 move_made = False
-cv_model = CVModel("../models/best.pt")
+cv_model = CVModel("../models/best_v2.pt")
 cv_model.start_capture(2)
 while True:
     move_made = False
