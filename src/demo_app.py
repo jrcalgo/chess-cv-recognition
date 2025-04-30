@@ -26,8 +26,8 @@ def main(stats=None):
     stockfish_elo = int(config['game']['stockfish_elo'])
 
     pygame.init()
-    game = RealtimeChessCV(yolo_model_path, video_capture_device, stockfish_exe_path, stockfish_depth,
-                           bounding_box_bottom_ratio, white_minutes, black_minutes, stockfish_elo)
+    game = RealtimeChessCV(yolo_model_path, video_capture_device, stockfish_depth,
+                           bounding_box_bottom_ratio, white_minutes, black_minutes)
     game.run()
 
 
