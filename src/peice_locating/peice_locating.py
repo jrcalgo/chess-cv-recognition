@@ -10,11 +10,12 @@ class PieceLocator():
         self.corners = []
         self.has_corners = False
 
-    def add_corner(self, point: pygame.Vector2):
+    def add_corner(self, point: pygame.Vector2, surf: pygame.Surface):
         self.corners.append(point)
         if len(self.corners) == 4:
             self.grid = gen_grid(self.corners, 8)
             self.has_corners = True
+            draw_grid(self.grid, surf)
             print("PieceLoactor: board initialized")
 
     def get_piece_locations(self, piece_boxes: list[dict[str, Any]]):

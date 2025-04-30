@@ -679,7 +679,7 @@ class CVChessGame:
                 if event.type == pygame.QUIT:
                     pygame.quit()
                 if event.type == pygame.MOUSEBUTTONDOWN:
-                    self.piece_locator.add_corner(pygame.Vector2(pygame.mouse.get_pos()))
+                    self.piece_locator.add_corner(pygame.Vector2(pygame.mouse.get_pos()), screen)
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
                     move_made = True
 
