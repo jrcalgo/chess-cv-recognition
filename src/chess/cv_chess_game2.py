@@ -23,7 +23,7 @@ import numpy as np
 import pygame
 from ultralytics import YOLO
 
-from src.chess.assets.parse_sprites import parse_sprites
+from .assets.parse_sprites import parse_sprites
 
 
 _FILE_DIR = Path(__file__).resolve().parent
