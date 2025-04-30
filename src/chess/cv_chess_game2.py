@@ -1,0 +1,353 @@
+"""
+Real-time chess piece detection and GUI visualization.
+
+Opens two windows:
+  1. OpenCV window – raw camera feed with bounding-box overlays.
+  2. Pygame window   – 2-D board updated from detections.
+
+Usage
+-----
+
+Press ‘r’ in the OpenCV window at any time to re-select the four board corners.
+Press ‘q’ to quit.
+"""
+from __future__ import annotations
+
+import collections
+import threading
+from pathlib import Path
+from typing import Dict, List
+
+import cv2
+import numpy as np
+import pygame
+from ultralytics import YOLO
+
+from src.chess.assets.parse_sprites import parse_sprites
+
+
+_FILE_DIR = Path(__file__).resolve().parent
+
+_PIECE_CODE_MAP = {
+    "pawn": "P",
+    "rook": "R",
+    "knight": "Kn",
+    "bishop": "B",
+    "queen": "Q",
+    "king": "K",
+}
+
+_PIECE_COLORS = {
+    'bB': (128, 0, 128), 'bK': (0, 0, 180), 'bKn': (0, 128, 255),
+    'bP': (0, 255, 255), 'bQ': (0, 0, 128), 'bR': (0, 255, 128),
+    'wB': (0, 255, 0), 'wK': (255, 255, 255), 'wKn': (0, 165, 255),
+    'wP': (0, 255, 255), 'wQ': (255, 0, 0), 'wR': (0, 215, 255)
+}
+
+
+def _label_to_sprite_code(label: str) -> str | None:
+    try:
+        color, piece = label.split("-")
+        return ("w" if color == "white" else "b") + _PIECE_CODE_MAP[piece]
+    except Exception:
+        return None
+
+
+def _create_kalman_filter() -> cv2.KalmanFilter:
+    kf = cv2.KalmanFilter(4, 2)
+    kf.measurementMatrix = np.array([[1, 0, 0, 0], [0, 1, 0, 0]], np.float32)
+    kf.transitionMatrix = np.array(
+        [[1, 0, 1, 0], [0, 1, 0, 1], [0, 0, 1, 0], [0, 0, 0, 1]], np.float32
+    )
+    kf.processNoiseCov = np.eye(4, dtype=np.float32) * 0.03
+    return kf
+
+
+class RealtimeChessCV:
+    """Encapsulates camera capture, YOLO inference, and GUI display."""
+
+    # board & GUI constants
+    _BOARD_PIX = 800  # inner canonical board size (Px)
+    _TILE_PIX = _BOARD_PIX // 8
+
+    # OpenCV colours (BGR)
+    _GRID_COLOUR = (0, 0, 255)
+
+    def __init__(self, model_path: str | Path, camera_index: int = 0):
+        self.model = YOLO(str(model_path))
+        self.cap = cv2.VideoCapture(camera_index)
+
+        # Synchronisation
+        self._shared_piece_locations: List[dict] = []
+        self._lock = threading.Lock()
+        self._perspective_ready = threading.Event()
+
+        # perspective matrices
+        self._board_src: np.ndarray | None = None  # canonical 0-800 square
+        self._board_dst: np.ndarray | None = None  # user-clicked dst pts
+        self._M: np.ndarray | None = None  # dst→src (for board mapping)
+
+        # state caches
+        self._history: Dict[tuple, collections.deque] = collections.defaultdict(
+            lambda: collections.deque(maxlen=10)
+        )
+        self._kalman_filters: Dict[tuple, cv2.KalmanFilter] = {}
+
+        # pygame assets
+        pygame.init()
+        self._white_sprites, self._black_sprites = parse_sprites(scale_size=self._TILE_PIX)
+        self._sprite_dict = {**self._white_sprites, **self._black_sprites}
+
+    def run(self) -> None:
+        """Blocking main loop (runs until user presses ‘q’)."""
+        # Step 1 – user clicks four board corners
+        self._select_grid()
+
+        # Step 2 – spin up Pygame GUI thread
+        gui_thr = threading.Thread(target=self._pygame_loop, daemon=True)
+        gui_thr.start()
+
+        # Step 3 – main detection loop (OpenCV window)
+        try:
+            self._detection_loop()
+        finally:
+            self.cap.release()
+            cv2.destroyAllWindows()
+            pygame.quit()
+
+    def _select_grid(self) -> None:
+        clicked_pts: List[List[int]] = []
+
+        def _click_cb(event, x, y, *_):
+            if event == cv2.EVENT_LBUTTONDOWN and len(clicked_pts) < 4:
+                clicked_pts.append([x, y])
+                print(f"✅ Point {len(clicked_pts)}: ({x}, {y})")
+
+        cv2.namedWindow("Click Corners")
+        cv2.setMouseCallback("Click Corners", _click_cb)
+        print(
+            "🖱 Click the 4 corners of the chessboard in this order:\n"
+            "Top-left (A8), Top-right (H8), Bottom-left (A1), Bottom-right (H1)"
+        )
+
+        while len(clicked_pts) < 4:
+            ok, frame = self.cap.read()
+            if not ok:
+                continue
+            vis = frame.copy()
+            for pt in clicked_pts:
+                cv2.circle(vis, tuple(pt), 6, (0, 255, 255), -1)
+            cv2.putText(
+                vis,
+                f"Click corner {len(clicked_pts)+1}/4",
+                (10, 25),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (255, 255, 255),
+                2,
+            )
+            cv2.imshow("Click Corners", vis)
+            if cv2.waitKey(1) & 0xFF == ord("q"):
+                raise KeyboardInterrupt("Quit during board selection")
+
+        cv2.destroyWindow("Click Corners")
+
+        # compute perspective transform from canonical board to image space
+        self._board_src = np.float32([[0, 0], [self._BOARD_PIX, 0], [0, self._BOARD_PIX], [self._BOARD_PIX, self._BOARD_PIX]])
+        self._board_dst = np.float32(clicked_pts)
+        self._M = cv2.getPerspectiveTransform(
+            self._board_dst,  # img→board (inverse of earlier code for GUI)
+            self._board_src,
+        )
+        self._perspective_ready.set()
+
+    def _detection_loop(self) -> None:
+        while self.cap.isOpened():
+            ok, frame = self.cap.read()
+            if not ok:
+                break
+
+            # Run YOLOv8 inference (single-frame)
+            results = self.model.predict(source=frame, conf=0.7, iou=0.5, save=False, stream=True)
+
+            annotated = frame.copy()
+            current_pieces: List[dict] = []
+
+            for r in results:
+                for box in r.boxes:
+                    x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)
+                    cls = int(box.cls[0].cpu().numpy())
+                    conf = float(box.conf[0].cpu().numpy())
+                    label = self.model.names[cls]
+
+                    cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
+                    center_id = (cx // 20, cy // 20)
+
+                    # temporal majority vote for class stability
+                    hist = self._history[center_id]
+                    hist.append(cls)
+                    most_common_cls, cnt = collections.Counter(hist).most_common(1)[0]
+                    if cnt / len(hist) >= 0.7:
+                        stable_cls = most_common_cls
+                    else:
+                        stable_cls = hist[-1]
+                    label = self.model.names[stable_cls]
+
+                    w, h = x2 - x1, y2 - y1
+
+                    # Kalman smoothing per small region id
+                    if center_id not in self._kalman_filters:
+                        kf = _create_kalman_filter()
+                        kf.statePre = np.array([[cx], [cy], [0], [0]], np.float32)
+                        self._kalman_filters[center_id] = kf
+                    corrected = self._kalman_filters[center_id].correct(
+                        np.array([[np.float32(cx)], [np.float32(cy)]])
+                    )
+                    cx_s, cy_s = int(corrected[0][0]), int(corrected[1][0])
+
+                    x1_s = cx_s - w // 2
+                    y1_s = cy_s - h // 2
+
+                    current_pieces.append(
+                        {
+                            "label": label,
+                            "x1": x1_s,
+                            "y1": y1_s,
+                            "width": w,
+                            "height": h,
+                        }
+                    )
+                    label = label.replace("white", "w").replace("black", "b")
+                    for k, v in _PIECE_CODE_MAP.items():
+                        label = label.replace(k, v)
+                    label = label.replace("-", "")
+
+                    current_piece_color = _PIECE_COLORS[label]
+
+                    # draw rectangle & label
+                    cv2.rectangle(annotated, (x1_s, y1_s), (x1_s + w, y1_s + h), (0, 255, 0), 2)
+                    cv2.putText(
+                        annotated,
+                        f"{label} {conf:.2f}",
+                        (x1_s, y1_s - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.6,
+                        current_piece_color,
+                        2,
+                    )
+
+            # push detections to GUI thread
+            with self._lock:
+                self._shared_piece_locations.clear()
+                self._shared_piece_locations.extend(current_pieces)
+
+            # overlay grid for user feedback
+            self._draw_grid_on_frame(annotated)
+            cv2.putText(
+                annotated,
+                "Press 'R' to redo grid  |  'Q' to quit",
+                (10, 25),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (255, 255, 255),
+                2,
+            )
+
+            cv2.imshow("Detection Feed", annotated)
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord("q"):
+                break
+            elif key == ord("r"):
+                self._perspective_ready.clear()
+                self._select_grid()
+
+    def _pygame_loop(self) -> None:
+        WIDTH = HEIGHT = self._BOARD_PIX
+        screen = pygame.display.set_mode((WIDTH, HEIGHT))
+        pygame.display.set_caption("Real-Time Chess Board")
+
+        clock = pygame.time.Clock()
+        running = True
+        while running:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+
+            if not self._perspective_ready.is_set():
+                pygame.display.flip()
+                continue
+
+            # copy detections under lock
+            with self._lock:
+                detections = list(self._shared_piece_locations)
+
+            # render board & pieces
+            screen.fill((0, 0, 0))
+            self._draw_board(screen)
+            state = self._build_game_state(detections)
+            self._draw_pieces(screen, state)
+
+            pygame.display.flip()
+            clock.tick(10)
+
+    def _draw_board(self, surface: pygame.Surface) -> None:
+        light = (240, 217, 181)
+        dark = (181, 136, 99)
+        for row in range(8):
+            for col in range(8):
+                color = light if (row + col) % 2 == 0 else dark
+                pygame.draw.rect(
+                    surface,
+                    color,
+                    pygame.Rect(
+                        col * self._TILE_PIX, row * self._TILE_PIX, self._TILE_PIX, self._TILE_PIX
+                    ),
+                )
+
+    def _build_game_state(self, detections: List[dict]) -> Dict[str, str]:
+        state: Dict[str, str] = {}
+        if self._M is None:
+            return state
+        for piece in detections:
+            cx = piece["x1"] + piece["width"] // 2
+            cy = piece["y1"] + int(piece["height"] ** 0.90)  # tweak for piece base
+            warped = cv2.perspectiveTransform(
+                np.array([[[cx, cy]]], dtype=np.float32), self._M
+            )[0][0]
+            gx, gy = warped
+            col = int(gx // self._TILE_PIX)
+            row = int(gy // self._TILE_PIX)
+            if 0 <= col < 8 and 0 <= row < 8:
+                square = f"{'abcdefgh'[col]}{8 - row}"
+                state[square] = piece["label"]
+        return state
+
+    def _draw_pieces(self, surface: pygame.Surface, state: Dict[str, str]) -> None:
+        for square, label in state.items():
+            code = _label_to_sprite_code(label)
+            sprite = self._sprite_dict.get(code)
+            if sprite is None:
+                continue  # silently skip unknowns
+            col = "abcdefgh".index(square[0])
+            row = 8 - int(square[1])
+            x = col * self._TILE_PIX + (self._TILE_PIX - sprite.get_width()) // 2
+            y = row * self._TILE_PIX + (self._TILE_PIX - sprite.get_height()) // 2
+            surface.blit(sprite, (x, y))
+
+    def _draw_grid_on_frame(self, frame: np.ndarray) -> None:
+        if self._board_src is None or self._board_dst is None:
+            return
+        persp = cv2.getPerspectiveTransform(self._board_src, self._board_dst)
+        for i in range(9):
+            # vertical lines
+            p1 = np.array([[[i * self._TILE_PIX, 0]]], dtype=np.float32)
+            p2 = np.array([[[i * self._TILE_PIX, self._BOARD_PIX]]], dtype=np.float32)
+            a = cv2.perspectiveTransform(p1, persp)[0][0]
+            b = cv2.perspectiveTransform(p2, persp)[0][0]
+            cv2.line(frame, tuple(a.astype(int)), tuple(b.astype(int)), self._GRID_COLOUR, 1)
+            # horizontal lines
+            p3 = np.array([[[0, i * self._TILE_PIX]]], dtype=np.float32)
+            p4 = np.array([[[self._BOARD_PIX, i * self._TILE_PIX]]], dtype=np.float32)
+            c = cv2.perspectiveTransform(p3, persp)[0][0]
+            d = cv2.perspectiveTransform(p4, persp)[0][0]
+            cv2.line(frame, tuple(c.astype(int)), tuple(d.astype(int)), self._GRID_COLOUR, 1)
