@@ -16,10 +16,11 @@ def main(stats=None):
     config = load_json_config(CONFIG_PATH)
     yolo_model_path = os.path.join(YOLO_MODEL_DIR, config['cv']['yolo_model'])
     video_capture_device = config['cv']['video_capture_device']
-    capture_orientation = str(config['cv']['capture_orientation']).lower()
+    white_minutes = config['cv']['white_minutes']
+    black_minutes = config['cv']['black_minutes']
 
     pygame.init()
-    game = RealtimeChessCV(yolo_model_path, video_capture_device)
+    game = RealtimeChessCV(yolo_model_path, video_capture_device, white_minutes, black_minutes)
     game.run()
 
 

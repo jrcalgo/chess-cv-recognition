@@ -24,7 +24,7 @@ import pygame
 from ultralytics import YOLO
 
 from .assets.parse_sprites import parse_sprites
-
+from .stockfish_api import StockfishPlayer
 
 _FILE_DIR = Path(__file__).resolve().parent
 
@@ -73,7 +73,18 @@ class RealtimeChessCV:
     # OpenCV colours (BGR)
     _GRID_COLOUR = (0, 0, 255)
 
-    def __init__(self, model_path: str | Path, camera_index: int = 0):
+    def __init__(self, model_path: str | Path, camera_index: int = 0, white_mins: int = 5, black_mins: int = 5):
+        # Player logic
+        self._turn = "white"
+        self._white_ms = white_mins * 60_000
+        self._black_ms = black_mins * 60_000
+        self._last_tick_ms = pygame.time.get_ticks()
+        self._waiting_for_stockfish = False
+        self._stockfish_arrow = None
+        self._prev_np_board = np.full((8, 8), "", dtype=object)
+        self._stockfish_player = StockfishPlayer(self._prev_np_board)
+
+        # Model and capture components
         self.model = YOLO(str(model_path))
         self.cap = cv2.VideoCapture(camera_index)
 
@@ -83,9 +94,9 @@ class RealtimeChessCV:
         self._perspective_ready = threading.Event()
 
         # perspective matrices
-        self._board_src: np.ndarray | None = None  # canonical 0-800 square
-        self._board_dst: np.ndarray | None = None  # user-clicked dst pts
-        self._M: np.ndarray | None = None  # dst→src (for board mapping)
+        self._board_src: np.ndarray | None = None
+        self._board_dst: np.ndarray | None = None
+        self._M: np.ndarray | None = None
 
         # state caches
         self._history: Dict[tuple, collections.deque] = collections.defaultdict(
@@ -93,8 +104,7 @@ class RealtimeChessCV:
         )
         self._kalman_filters: Dict[tuple, cv2.KalmanFilter] = {}
 
-        # pygame assets
-        pygame.init()
+        # pygame asseets
         self._white_sprites, self._black_sprites = parse_sprites(scale_size=self._TILE_PIX)
         self._sprite_dict = {**self._white_sprites, **self._black_sprites}
 
@@ -114,6 +124,15 @@ class RealtimeChessCV:
             self.cap.release()
             cv2.destroyAllWindows()
             pygame.quit()
+
+    def _tick_clock(self):
+        now = pygame.time.get_ticks()
+        delta = now - self._last_tick_ms
+        self._last_tick_ms = now
+        if self._turn == "white":
+            self._white_ms = max(0, self._white_ms - delta)
+        else:
+            self._black_ms = max(0, self._black_ms - delta)
 
     def _select_grid(self) -> None:
         clicked_pts: List[List[int]] = []
@@ -261,6 +280,79 @@ class RealtimeChessCV:
                 self._perspective_ready.clear()
                 self._select_grid()
 
+        # ------------------------------------------------------------------ #
+    #  Helpers for board-array bookkeeping and arrow-completion check    #
+    # ------------------------------------------------------------------ #
+    def _dict_to_np(self, state: Dict[str, str]) -> np.ndarray:
+        """
+        Convert an algebraic-notation dict (e.g. {'e4':'wP'}) → 8×8 ndarray.
+
+        Row 0 = rank 8 (Black’s back rank), Row 7 = rank 1 (White’s back rank)
+        Col 0 = file 'a', Col 7 = file 'h'
+        """
+        board = np.full((8, 8), "", dtype=object)
+
+        for sq, label in state.items():
+            file_chr, rank_chr = sq[0], sq[1]
+            col = "abcdefgh".index(file_chr)
+            row = 8 - int(rank_chr)
+            board[row, col] = label
+
+        return board
+
+    def _has_arrow_move_occurred(
+            self,
+            prev: np.ndarray,
+            curr: np.ndarray,
+    ) -> bool:
+        """
+        True ⇢ engine’s suggested piece has moved **exactly as drawn**.
+
+        A conservative check:
+        • piece that was on SRC disappeared from SRC
+        • same piece materialised on DST
+        • every other square stayed identical
+        """
+        if self._stockfish_arrow is None:
+            return False
+
+        (src_c, src_r), (dst_c, dst_r) = self._stockfish_arrow
+
+        moved_piece = prev[src_r, src_c]
+        if moved_piece == "":
+            return False                      # nothing to move
+
+        # basic source / destination sanity
+        if curr[src_r, src_c] != "":
+            return False                      # piece still sitting on source
+        if curr[dst_r, dst_c] != moved_piece:
+            return False                      # wrong piece on destination
+
+        # optional strictness: make sure nothing else changed
+        mask = np.ones(prev.shape, dtype=bool)
+        mask[src_r, src_c] = False
+        mask[dst_r, dst_c] = False
+        if not np.array_equal(prev[mask], curr[mask]):
+            return False                      # other squares changed → ignore
+
+        return True
+
+    def _handle_human_move(self):
+        # freeze White’s clock
+        self._tick_clock()  # one last tick
+        self._turn = "black"
+        # capture clean board ndarray
+        detections = list(self._shared_piece_locations)
+        state_dict = self._build_game_state(detections)
+        self._prev_np_board = self._dict_to_np(state_dict)
+
+        # ask Stockfish for a reply
+        frm, to = self._stockfish_player.get_stockfish_move(
+            self._prev_np_board, self._white_ms, self._black_ms
+        )
+        self._stockfish_arrow = (frm, to)
+        self._waiting_for_stockfish = True
+
     def _pygame_loop(self) -> None:
         WIDTH = HEIGHT = self._BOARD_PIX
         screen = pygame.display.set_mode((WIDTH, HEIGHT))
@@ -272,6 +364,8 @@ class RealtimeChessCV:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE and self._turn == "white" and not self._waiting_for_stockfish:
+                    self._handle_human_move()
 
             if not self._perspective_ready.is_set():
                 pygame.display.flip()
@@ -281,11 +375,34 @@ class RealtimeChessCV:
             with self._lock:
                 detections = list(self._shared_piece_locations)
 
+            if self._waiting_for_stockfish:
+                state_dict = self._build_game_state(detections)
+                np_board = self._dict_to_np(state_dict)
+
+                if self._has_arrow_move_occurred(self._prev_np_board, np_board):
+                    # Black obeyed – stop their clock, start White’s
+                    self._tick_clock()
+                    self._turn = "white"
+                    self._waiting_for_stockfish = False
+                    self._stockfish_arrow = None
+                    self._prev_np_board = np_board  # new baseline
+
             # render board & pieces
             screen.fill((0, 0, 0))
             self._draw_board(screen)
             state = self._build_game_state(detections)
             self._draw_pieces(screen, state)
+
+            if self._stockfish_arrow:
+                p1, p2 = self._stockfish_arrow
+                s = self._TILE_PIX
+                pygame.draw.line(
+                    screen,
+                    (255, 0, 0),
+                    (p1[0]*s + s//2, p1[1]*s + s//2),
+                    (p2[0]*s + s//2, p2[1]*s + s//2),
+                    6
+                )
 
             pygame.display.flip()
             clock.tick(10)

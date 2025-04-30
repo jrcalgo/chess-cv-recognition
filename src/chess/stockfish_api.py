@@ -6,7 +6,12 @@ from stockfish import Stockfish, StockfishException
 class StockfishPlayer:
     def __init__(self, piece_state: np.ndarray):
         self.current_board: np.ndarray = piece_state
-        self.stockfish = Stockfish()
+        self.stockfish = Stockfish().__init__(parameters={
+            "Threads": 2,
+            "UCI_LimitStrength": False,
+            "Skill Level": 20,
+            "UCI_Elo": 2800
+        })
 
     def get_stockfish_move(self, recent_piece_state: np.ndarray, white_time: int, black_time: int) -> tuple[tuple[int, int], tuple[int, int]]:
         best_move = None
