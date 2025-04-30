@@ -1,3 +1,4 @@
+import multiprocessing
 from typing import Optional
 
 import numpy as np
@@ -12,7 +13,8 @@ class StockfishPlayer:
             path=stockfish_exe_path,
             depth=5,
             parameters={
-                "Threads": 4,
+                "Threads": multiprocessing.cpu_count(),
+                "hash": 2 * 1024,
                 "UCI_LimitStrength": False,
                 "Skill Level": 20,
                 "UCI_Elo": stockfish_elo
@@ -68,6 +70,3 @@ class StockfishPlayer:
             col_to = ord(best_move[2]) - ord('a')
             row_to = 8 - int(best_move[3])
             return (col_from, row_from), (col_to, row_to)
-
-    def _stockfish_api_request(self):
-

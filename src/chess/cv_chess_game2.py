@@ -45,9 +45,11 @@ _PIECE_COLORS = {
     'wP': (0, 255, 255), 'wQ': (255, 0, 0), 'wR': (0, 215, 255)
 }
 
+
 def _fmt_ms(ms: int) -> str:
     mins, secs = divmod(ms // 1000, 60)
     return f"{mins}:{secs:02d}"
+
 
 def _label_to_sprite_code(label: str) -> str | None:
     try:
@@ -79,7 +81,8 @@ class RealtimeChessCV:
     _GRID_COLOUR = (0, 0, 255)
 
     def __init__(self, model_path: str | Path, camera_index: int = 0, stockfish_exe_path: str = "",
-                 bounding_box_bottom_ratio: float = .90, white_mins: int = 5, black_mins: int = 5, stockfish_elo: int = 2000):
+                 bounding_box_bottom_ratio: float = .90, white_mins: int = 5, black_mins: int = 5,
+                 stockfish_elo: int = 2000):
         # Player logic
         self._turn = "white"
         self._white_ms = white_mins * 60_000
@@ -138,9 +141,11 @@ class RealtimeChessCV:
         delta = now - self._last_tick_ms
         self._last_tick_ms = now
         if self._turn == "white":
-            self._white_ms = max(0, self._white_ms - delta)
+            with self._lock:
+                self._white_ms = max(0, self._white_ms - delta)
         else:
-            self._black_ms = max(0, self._black_ms - delta)
+            with self._lock:
+                self._black_ms = max(0, self._black_ms - delta)
 
     def _select_grid(self) -> None:
         clicked_pts: List[List[int]] = []
@@ -166,7 +171,7 @@ class RealtimeChessCV:
                 cv2.circle(vis, tuple(pt), 6, (0, 255, 255), -1)
             cv2.putText(
                 vis,
-                f"Click corner {len(clicked_pts)+1}/4",
+                f"Click corner {len(clicked_pts) + 1}/4",
                 (10, 25),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.7,
@@ -180,7 +185,8 @@ class RealtimeChessCV:
         cv2.destroyWindow("Click Corners")
 
         # compute perspective transform from canonical board to image space
-        self._board_src = np.float32([[0, 0], [self._BOARD_PIX, 0], [0, self._BOARD_PIX], [self._BOARD_PIX, self._BOARD_PIX]])
+        self._board_src = np.float32(
+            [[0, 0], [self._BOARD_PIX, 0], [0, self._BOARD_PIX], [self._BOARD_PIX, self._BOARD_PIX]])
         self._board_dst = np.float32(clicked_pts)
         self._M = cv2.getPerspectiveTransform(
             self._board_dst,  # img→board (inverse of earlier code for GUI)
@@ -264,17 +270,31 @@ class RealtimeChessCV:
 
             # push detections to GUI thread
             with self._lock:
+                white_ms = self._white_ms
+                black_ms = self._black_ms
+
                 self._shared_piece_locations.clear()
                 self._shared_piece_locations.extend(current_pieces)
 
             # overlay grid for user feedback
             self._draw_grid_on_frame(annotated)
+            # Key shortcut info
             cv2.putText(
                 annotated,
-                "Press 'R' to redo grid | 'Space' for turn | 'Q' to quit",
+                "Press 'R' to redo grid | 'Space' for turn (GUI) | 'Q' to quit",
                 (10, 25),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
+                0.65,
+                (255, 255, 255),
+                2,
+            )
+            # player times
+            cv2.putText(
+                annotated,
+                f"White: {_fmt_ms(white_ms)} | Black: {_fmt_ms(black_ms)}",
+                (10, self._BOARD_PIX + 25),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.65,
                 (255, 255, 255),
                 2,
             )
@@ -287,15 +307,9 @@ class RealtimeChessCV:
                 self._perspective_ready.clear()
                 self._select_grid()
 
-        # ------------------------------------------------------------------ #
-    #  Helpers for board-array bookkeeping and arrow-completion check    #
-    # ------------------------------------------------------------------ #
     def _dict_to_np(self, state: Dict[str, str]) -> np.ndarray:
         """
         Convert an algebraic-notation dict (e.g. {'e4':'wP'}) → 8×8 ndarray.
-
-        Row 0 = rank 8 (Black’s back rank), Row 7 = rank 1 (White’s back rank)
-        Col 0 = file 'a', Col 7 = file 'h'
         """
         board = np.full((8, 8), "", dtype=object)
 
@@ -314,11 +328,6 @@ class RealtimeChessCV:
     ) -> bool:
         """
         True ⇢ engine’s suggested piece has moved **exactly as drawn**.
-
-        A conservative check:
-        • piece that was on SRC disappeared from SRC
-        • same piece materialised on DST
-        • every other square stayed identical
         """
         if self._stockfish_arrow is None:
             return False
@@ -356,8 +365,12 @@ class RealtimeChessCV:
         self._prev_np_board = self._dict_to_np(state_dict)
 
         # ask Stockfish for a reply
+        with self._lock:
+            white_ms = self._white_ms
+            black_ms = self._black_ms
+
         frm, to = self._stockfish_player.get_stockfish_move(
-            self._prev_np_board, self._white_ms, self._black_ms
+            self._prev_np_board, white_ms, black_ms
         )
         self._stockfish_arrow = (frm, to)
         self._waiting_for_stockfish = True
@@ -409,8 +422,8 @@ class RealtimeChessCV:
                 pygame.draw.line(
                     screen,
                     (255, 0, 0),
-                    (p1[0]*s + s//2, p1[1]*s + s//2),
-                    (p2[0]*s + s//2, p2[1]*s + s//2),
+                    (p1[0] * s + s // 2, p1[1] * s + s // 2),
+                    (p2[0] * s + s // 2, p2[1] * s + s // 2),
                     6
                 )
 
@@ -437,7 +450,8 @@ class RealtimeChessCV:
             return state
         for piece in detections:
             cx = piece["x1"] + piece["width"] // 2
-            cy = piece["y1"] + int(piece["height"] ** self._bounding_box_bottom_ratio)  # tweak for piece based on camera
+            cy = piece["y1"] + int(
+                piece["height"] ** self._bounding_box_bottom_ratio)  # tweak for piece based on camera
             warped = cv2.perspectiveTransform(
                 np.array([[[cx, cy]]], dtype=np.float32), self._M
             )[0][0]
@@ -472,6 +486,7 @@ class RealtimeChessCV:
             a = cv2.perspectiveTransform(p1, persp)[0][0]
             b = cv2.perspectiveTransform(p2, persp)[0][0]
             cv2.line(frame, tuple(a.astype(int)), tuple(b.astype(int)), self._GRID_COLOUR, 1)
+
             # horizontal lines
             p3 = np.array([[[0, i * self._TILE_PIX]]], dtype=np.float32)
             p4 = np.array([[[self._BOARD_PIX, i * self._TILE_PIX]]], dtype=np.float32)
