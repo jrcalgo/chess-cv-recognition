@@ -11,7 +11,7 @@ from src.chess.ui.chess_game_panel import ChessBoardState, TimerInputScreen
 from src.chess.ui.computer_vision_panel import ComputerVisionPanel, AnnotationAggregator, bgr2rgb
 from .stockfish_api import StockfishPlayer
 from .assets.parse_sprites import parse_sprites
-from ..peice_locating.peice_locating import PieceLocator
+from src.peice_locating.peice_locating import PieceLocator
 
 
 class ChessPieces:
@@ -706,7 +706,7 @@ class CVChessGame:
             screen.fill((30, 30, 30))
 
             # Render ComputerVisionPanel frames from cv and model
-            frame, rect, text = self.cv_panel.pull_for_render()
+            frame, rects, texts = self.cv_panel.pull_for_render()
             if frame is not None:
                 annotation_frame = frame.copy()
 
@@ -715,33 +715,26 @@ class CVChessGame:
 
                 annotated_surface = pygame.image.frombuffer(annotation_frame.tobytes(), (800, 1000), 'RGB').convert()
 
-                if rect is not None:
-                    inf_h, inf_w = frame.shape[:2]
-                    x_scale = half_width / inf_w
-                    y_scale = screen_height / inf_h
-
-                    scaled_rects = [((x1*x_scale, y1*y_scale), (x2*x_scale, y2*y_scale), color, thickness)
-                                    for (x1, y1), (x2, y2), color, thickness in rect]
-
-                    scaled_texts = [(text, (x*x_scale, y*y_scale), color) for text, (x, y), color in text]
-
-                    for (x1, y1), (x2, y2), color, thickness in scaled_rects:
+                if rects is not None:
+                    for (x1, y1), (x2, y2), color, thickness in rects:
                         color = bgr2rgb(color)
                         w, h = x2 - x1, y2 - y1
                         pygame.draw.rect(annotated_surface, color, (x1, y1, w, h), thickness)
 
-                    for text, (x, y), color in scaled_texts:
+                    for text, (x, y), color in texts:
                         color = bgr2rgb(color)
                         text_surface = self.box_text_font.render(text, True, color)
                         text_surface.set_colorkey((0, 0, 0))
                         annotated_surface.blit(text_surface, (x, y))
 
                 old_annotation_surface = annotated_surface.copy()
-                scaled, x, y = fit_to_scale(annotated_surface, pygame.Rect(0, 0, half_width, screen_height))
-                screen.blit(scaled, (x, y))
+                # scaled, x, y = fit_to_scale(annotated_surface, pygame.Rect(0, 0, half_width, screen_height))
+                # screen.blit(scaled, (x, y))
+                screen.blit(annotated_surface, (0, 0))
             elif old_annotation_surface is not None:
-                scaled, x, y = fit_to_scale(old_annotation_surface, pygame.Rect(0, 0, half_width, screen_height))
-                screen.blit(scaled, (x, y))
+                # scaled, x, y = fit_to_scale(old_annotation_surface, pygame.Rect(0, 0, half_width, screen_height))
+                # screen.blit(scaled, (x, y))
+                screen.blit(old_annotation_surface, (0, 0))
 
             # Draw timers and turn indicators, shifted right by half_width
             pygame.draw.rect(screen, (77, 77, 77), pygame.Rect(half_width, 0, 800, 100))
@@ -797,7 +790,6 @@ class CVChessGame:
             pygame.display.flip()
             clock.tick(60)
 
-
             if not self.piece_locator.has_corners:
                 continue
 
@@ -810,16 +802,19 @@ class CVChessGame:
                 print("invalid move")
                 continue
 
-
             if self.board_state.current_turn == 'w':
                 src = move[0]
                 dst = move[1]
                 piece = str(self.board_state.pieces.piece_state[src])
+                print("pieces: ", self.board_state.pieces.piece_state)
                 moved = False
 
                 # 1) Castling
                 current_turn = self.board_state.current_turn
                 if not self.white_castled and current_turn == 'w':
+                    print("piece: ", piece)
+                    print("dst: ", dst)
+                    print("src: ", src)
                     if piece[1] == 'K' and abs(dst[1] - src[1]) == 2:
                         if dst[1] > src[1]:
                             self.castle_kingside()
