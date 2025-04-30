@@ -4,5 +4,6 @@ matplotlib
 seaborn
 pandas
 ultralytics
-opencv-pythonrequests
+opencv-python
+requests
 setuptools

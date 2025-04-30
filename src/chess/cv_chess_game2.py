@@ -25,7 +25,7 @@ from pygame import font
 from ultralytics import YOLO
 
 from .assets.parse_sprites import parse_sprites
-from .stockfish_api import StockfishPlayer
+from .stockfish_api import StockfishAPIPlayer
 
 _FILE_DIR = Path(__file__).resolve().parent
 
@@ -78,8 +78,8 @@ class RealtimeChessCV:
     # OpenCV colours (BGR)
     _GRID_COLOUR = (0, 0, 255)
 
-    def __init__(self, model_path: str | Path, camera_index: int = 0, stockfish_exe_path: str = "", stockfish_depth: int = 5,
-                 bounding_box_bottom_ratio: float = .90, white_mins: int = 5, black_mins: int = 5, stockfish_elo: int = 2000):
+    def __init__(self, model_path: str | Path, camera_index: int = 0, stockfish_depth: int = 5,
+                 bounding_box_bottom_ratio: float = .90, white_mins: int = 5, black_mins: int = 5):
         # Player logic
         self._turn = "white"
         self._white_ms = white_mins * 60_000
@@ -89,7 +89,7 @@ class RealtimeChessCV:
         self._waiting_for_stockfish = False
         self._stockfish_arrow = None
         self._prev_np_board = np.full((8, 8), "", dtype=object)
-        self._stockfish_player = StockfishPlayer(self._prev_np_board, stockfish_exe_path, stockfish_depth, stockfish_elo)
+        self._stockfish_player = StockfishAPIPlayer(self._prev_np_board, stockfish_depth)
         self._bounding_box_bottom_ratio = bounding_box_bottom_ratio
 
         # Model and capture components
