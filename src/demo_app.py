@@ -18,6 +18,7 @@ def main(stats=None):
     yolo_model_path = os.path.join(YOLO_MODEL_DIR, config['cv']['yolo_model'])
     video_capture_device = int(config['cv']['video_capture_device'])
     stockfish_exe_path = str(config['cv']['stockfish_exe_path'])
+    stockfish_depth = int(config['cv']['stockfish_depth'])
     bounding_box_bottom_ratio = float(config['cv']['bounding_box_bottom_ratio'])
 
     white_minutes = int(config['game']['white_minutes'])
@@ -25,7 +26,7 @@ def main(stats=None):
     stockfish_elo = int(config['game']['stockfish_elo'])
 
     pygame.init()
-    game = RealtimeChessCV(yolo_model_path, video_capture_device, stockfish_exe_path,
+    game = RealtimeChessCV(yolo_model_path, video_capture_device, stockfish_exe_path, stockfish_depth,
                            bounding_box_bottom_ratio, white_minutes, black_minutes, stockfish_elo)
     game.run()
 

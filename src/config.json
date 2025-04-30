@@ -2,9 +2,11 @@
     "cv": {
         "yolo_model": "best_v2.pt",
         "video_capture_device": 0,
-        "_comment": "Use absolute path to stockfish exe",
-        "stockfish_exe_path": "/Users/tybg/Documents/GitHub/chess-cv-recognition/stockfish/stockfish-macos-m1-apple-silicon",
-        "_comment2": "Configure based on position of camera in relation to board",
+        "_comment1": "Use absolute path to stockfish exe",
+        "stockfish_exe_path": "<your_path_here>",
+        "_comment2": "Depth of the stockfish best_move search",
+        "stockfish_depth": 15,
+        "_comment3": "Configure based on position of camera in relation to board",
         "bounding_box_bottom_ratio": 0.90
     },
     "game": {

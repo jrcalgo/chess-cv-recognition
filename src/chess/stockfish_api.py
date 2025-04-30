@@ -1,3 +1,4 @@
+import multiprocessing
 from typing import Optional
 
 import numpy as np
@@ -6,15 +7,15 @@ from stockfish import Stockfish, StockfishException
 
 
 class StockfishPlayer:
-    def __init__(self, piece_state: np.ndarray, stockfish_exe_path: str, stockfish_elo: int):
+    def __init__(self, piece_state: np.ndarray, stockfish_exe_path: str, stockfish_depth: int, stockfish_elo: int):
         self.current_board: np.ndarray = piece_state
         self.stockfish = Stockfish(
             path=stockfish_exe_path,
-            depth=5,
+            depth=stockfish_depth,
             parameters={
-                "Threads": 4,
+                "Threads": multiprocessing.cpu_count(),
+                "Hash": 512,
                 "UCI_LimitStrength": False,
-                "Skill Level": 20,
                 "UCI_Elo": stockfish_elo
             })
 

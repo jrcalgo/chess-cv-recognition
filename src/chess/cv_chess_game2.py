@@ -78,7 +78,7 @@ class RealtimeChessCV:
     # OpenCV colours (BGR)
     _GRID_COLOUR = (0, 0, 255)
 
-    def __init__(self, model_path: str | Path, camera_index: int = 0, stockfish_exe_path: str = "",
+    def __init__(self, model_path: str | Path, camera_index: int = 0, stockfish_exe_path: str = "", stockfish_depth: int = 5,
                  bounding_box_bottom_ratio: float = .90, white_mins: int = 5, black_mins: int = 5, stockfish_elo: int = 2000):
         # Player logic
         self._turn = "white"
@@ -89,7 +89,7 @@ class RealtimeChessCV:
         self._waiting_for_stockfish = False
         self._stockfish_arrow = None
         self._prev_np_board = np.full((8, 8), "", dtype=object)
-        self._stockfish_player = StockfishPlayer(self._prev_np_board, stockfish_exe_path, stockfish_elo)
+        self._stockfish_player = StockfishPlayer(self._prev_np_board, stockfish_exe_path, stockfish_depth, stockfish_elo)
         self._bounding_box_bottom_ratio = bounding_box_bottom_ratio
 
         # Model and capture components
@@ -390,12 +390,11 @@ class RealtimeChessCV:
                 np_board = self._dict_to_np(state_dict)
 
                 if self._has_arrow_move_occurred(self._prev_np_board, np_board):
-                    # Black obeyed – stop their clock, start White’s
                     self._tick_clock()
                     self._turn = "white"
                     self._waiting_for_stockfish = False
                     self._stockfish_arrow = None
-                    self._prev_np_board = np_board  # new baseline
+                    self._prev_np_board = np_board
 
             # render board & pieces
             screen.fill((0, 0, 0))
