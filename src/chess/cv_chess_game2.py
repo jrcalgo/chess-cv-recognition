@@ -412,52 +412,8 @@ class RealtimeChessCV:
                     6
                 )
 
-            # ── draw board, pieces, arrow ────────────────────────────────────────
-            screen.fill((40, 40, 40))                   # dark frame background
-            board_surface = screen.subsurface((0, 0, self._BOARD_PIX, self._BOARD_PIX))
-            self._draw_board(board_surface)
-
-            with self._lock:
-                detections = list(self._shared_piece_locations)
-            state = self._build_game_state(detections)
-            self._draw_pieces(board_surface, state)
-
-            if self._stockfish_arrow:
-                p1, p2 = self._stockfish_arrow
-                s = self._TILE_PIX
-                pygame.draw.line(
-                    board_surface,
-                    (255, 0, 0),
-                    (p1[0] * s + s // 2, p1[1] * s + s // 2),
-                    (p2[0] * s + s // 2, p2[1] * s + s // 2),
-                    6,
-                )
-
-                bar_rect = pygame.Rect(0, self._BOARD_PIX, WIDTH, self._TIMER_BAR)
-                pygame.draw.rect(screen, (25, 25, 25), bar_rect)
-
-                # white on left, black on right
-                white_txt = self._timer_font.render(_fmt_ms(self._white_ms), True, (255, 255, 255))
-                black_txt = self._timer_font.render(_fmt_ms(self._black_ms), True, (255, 255, 255))
-
-                screen.blit(white_txt, (20, self._BOARD_PIX + (self._TIMER_BAR - white_txt.get_height()) // 2))
-                screen.blit(
-                    black_txt,
-                    (
-                        WIDTH - black_txt.get_width() - 20,
-                        self._BOARD_PIX + (self._TIMER_BAR - black_txt.get_height()) // 2,
-                    ),
-                )
-
-                # active side highlight
-                highlight = (0, 200, 0) if self._turn == "white" else (200, 0, 0)
-                h_rect = white_txt.get_rect(topleft=(20, self._BOARD_PIX + (self._TIMER_BAR - white_txt.get_height()) // 2)) \
-                    if self._turn == "white" else \
-                    black_txt.get_rect(topright=(WIDTH - 20, self._BOARD_PIX + (self._TIMER_BAR - black_txt.get_height()) // 2))
-                pygame.draw.rect(screen, highlight, h_rect.inflate(10, 10), 3)
-
-                pygame.display.flip()
-                clock.tick(30)
+            pygame.display.flip()
+            clock.tick(10)
 
     def _draw_board(self, surface: pygame.Surface) -> None:
         light = (240, 217, 181)
