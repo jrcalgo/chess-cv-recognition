@@ -94,9 +94,12 @@ class ComputerVisionPanel:
         except queue.Empty:
             return None, None, None
 
-    def acquire_piece_location(self):
-        # launch piece location determination function in separate thread
-        threading.Thread(target=self._acquire_piece_location, daemon=True).start()
+    def acquire_piece_location(self, piece_data=None):
+        try:
+            self.piece_location_queue.put_nowait(piece_data)
+        except queue.Full:
+            _ = self.piece_location_queue.get_nowait()
+            self.piece_location_queue.put_nowait(piece_data)
 
     def quit(self):
         self.running = False
@@ -122,14 +125,10 @@ class ComputerVisionPanel:
                 _ = self.job_queue.get_nowait()
                 self.job_queue.put_nowait(frame)
 
-    def _acquire_piece_location(self):
-        # TODO: output piece locations as an 8x8 ndarray
-        pass
-
     def _inference_loop(self):
         history = collections.defaultdict(lambda: collections.deque(maxlen=10))
         kalman_filters = {}
-        piece_locations = []
+        piece_locations = {}
 
         self.running = True
 
@@ -141,6 +140,7 @@ class ComputerVisionPanel:
 
             results = self.model.predict(source=frame, conf=0.7, iou=0.5, save=False, stream=True)
 
+            piece_locations = []
             references = []
             text = []
 
@@ -189,9 +189,34 @@ class ComputerVisionPanel:
 
                     color = piece_colors.get(label, (0, 255, 0))
 
-                    references.append(((x1_smoothed, y1_smoothed), (x2_smoothed, y2_smoothed),
+                    piece_map = {
+                        "bishop": "B", "knight": "Kn", "king": "K",
+                        "queen":  "Q", "rook":   "R",  "pawn":  "P",
+                    }
+                    label = label.replace("white", "w").replace("black", "b")
+                    for k, v in piece_map.items():
+                        label = label.replace(k, v)
+                    label = label.replace("-", "")
+
+                    inf_height, inf_width = frame.shape[:2]
+                    x_scale = 800 / inf_width
+                    y_scale = 1000 / inf_height
+
+                    (x1, y1) = (x1_smoothed*x_scale, y1_smoothed*y_scale)
+                    (x2, y2) = (x2_smoothed*x_scale, y2_smoothed*y_scale)
+
+                    piece_data = {
+                            'label': label,
+                            'x': int(x1),
+                            'y': int(y1),
+                            'width': int(width),
+                            'height': int(height)
+                    }
+
+                    piece_locations.append(piece_data)
+                    references.append(((x1, y1), (x2, y2),
                                  color, 2))
-                    text.append((f'{label} {conf:.2f}', (x1_smoothed, y1_smoothed - 10), color))
+                    text.append((f'{label} {conf:.2f}', (x1, y1 - 10), color))
 
             if not references:
                 try:
@@ -204,6 +229,12 @@ class ComputerVisionPanel:
             except queue.Full:
                 _ = self.render_result_queue.get_nowait()
                 self.render_result_queue.put_nowait((frame, references, text))
+
+            try:
+                self.piece_location_queue.put_nowait(piece_locations)
+            except queue.Full:
+                _ = self.piece_location_queue.get_nowait()
+                self.piece_location_queue.put_nowait(piece_locations)
 
             # Print detected pieces
             print("🧠 Detected pieces this frame:")

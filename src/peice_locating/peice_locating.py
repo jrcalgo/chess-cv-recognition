@@ -1,3 +1,5 @@
+from typing import Any
+
 import numpy as np
 import pygame
 
@@ -15,18 +17,17 @@ class PieceLocator():
             self.has_corners = True
             print("PieceLoactor: board initialized")
 
-    def get_piece_locations(self, piece_boxes):
+    def get_piece_locations(self, piece_boxes: list[dict[str, Any]]):
         if not self.has_corners:
             return None
         piece_locations = {}
         for piece in piece_boxes:
-            piece_box = piece_boxes[piece]
-            piece_rect = pygame.Rect(piece_box["x"], piece_box["y"], piece_box["width"], piece_box["height"])
+            piece_rect = pygame.Rect(piece["x"], piece["y"], piece["width"], piece["height"])
             base_point = get_center_point(piece_rect)
             tile = get_cell(base_point, self.grid)
-            if piece not in piece_locations:
-                piece_locations = []
-            piece_locations[piece].append(tile)
+            if piece['label'] not in piece_locations:
+                piece_locations[piece['label']] = []
+            piece_locations[piece['label']].append(tile)
         return piece_locations
 
 
