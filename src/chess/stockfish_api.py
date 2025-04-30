@@ -11,7 +11,7 @@ class StockfishPlayer:
         self.stockfish = Stockfish(
             path=stockfish_exe_path,
             parameters={
-                "Threads": 2,
+                "Threads": 4,
                 "UCI_LimitStrength": False,
                 "Skill Level": 20,
                 "UCI_Elo": stockfish_elo
