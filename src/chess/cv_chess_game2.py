@@ -78,7 +78,8 @@ class RealtimeChessCV:
     # OpenCV colours (BGR)
     _GRID_COLOUR = (0, 0, 255)
 
-    def __init__(self, model_path: str | Path, camera_index: int = 0, stockfish_exe_path: str = "", white_mins: int = 5, black_mins: int = 5):
+    def __init__(self, model_path: str | Path, camera_index: int = 0, stockfish_exe_path: str = "",
+                 bounding_box_bottom_ratio: float = .90, white_mins: int = 5, black_mins: int = 5, stockfish_elo: int = 2000):
         # Player logic
         self._turn = "white"
         self._white_ms = white_mins * 60_000
@@ -88,7 +89,8 @@ class RealtimeChessCV:
         self._waiting_for_stockfish = False
         self._stockfish_arrow = None
         self._prev_np_board = np.full((8, 8), "", dtype=object)
-        self._stockfish_player = StockfishPlayer(self._prev_np_board, stockfish_exe_path)
+        self._stockfish_player = StockfishPlayer(self._prev_np_board, stockfish_exe_path, stockfish_elo)
+        self._bounding_box_bottom_ratio = bounding_box_bottom_ratio
 
         # Model and capture components
         self.model = YOLO(str(model_path))
@@ -435,8 +437,8 @@ class RealtimeChessCV:
                 pygame.draw.rect(screen, (25, 25, 25), bar_rect)
 
                 # white on left, black on right
-                white_txt = self._timer_font.render(self._fmt_ms(self._white_ms), True, (255, 255, 255))
-                black_txt = self._timer_font.render(self._fmt_ms(self._black_ms), True, (255, 255, 255))
+                white_txt = self._timer_font.render(_fmt_ms(self._white_ms), True, (255, 255, 255))
+                black_txt = self._timer_font.render(_fmt_ms(self._black_ms), True, (255, 255, 255))
 
                 screen.blit(white_txt, (20, self._BOARD_PIX + (self._TIMER_BAR - white_txt.get_height()) // 2))
                 screen.blit(
@@ -477,7 +479,7 @@ class RealtimeChessCV:
             return state
         for piece in detections:
             cx = piece["x1"] + piece["width"] // 2
-            cy = piece["y1"] + int(piece["height"] ** 0.90)  # tweak for piece base
+            cy = piece["y1"] + int(piece["height"] ** self._bounding_box_bottom_ratio)  # tweak for piece base
             warped = cv2.perspectiveTransform(
                 np.array([[[cx, cy]]], dtype=np.float32), self._M
             )[0][0]

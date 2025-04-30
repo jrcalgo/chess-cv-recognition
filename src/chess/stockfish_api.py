@@ -4,7 +4,7 @@ from stockfish import Stockfish, StockfishException
 
 
 class StockfishPlayer:
-    def __init__(self, piece_state: np.ndarray, stockfish_exe_path: str):
+    def __init__(self, piece_state: np.ndarray, stockfish_exe_path: str, stockfish_elo: int):
         self.current_board: np.ndarray = piece_state
         self.stockfish = Stockfish(
             path=stockfish_exe_path,
@@ -12,7 +12,7 @@ class StockfishPlayer:
                 "Threads": 2,
                 "UCI_LimitStrength": False,
                 "Skill Level": 20,
-                "UCI_Elo": 2800
+                "UCI_Elo": stockfish_elo
             })
 
     def get_stockfish_move(self, recent_piece_state: np.ndarray, white_time: int, black_time: int) -> tuple[tuple[int, int], tuple[int, int]]:

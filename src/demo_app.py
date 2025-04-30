@@ -17,12 +17,15 @@ def main(stats=None):
     yolo_model_path = os.path.join(YOLO_MODEL_DIR, config['cv']['yolo_model'])
     video_capture_device = int(config['cv']['video_capture_device'])
     stockfish_exe_path = str(config['cv']['stockfish_exe_path'])
+    bounding_box_bottom_ratio = float(config['cv']['bounding_box_bottom_ratio'])
     white_minutes = int(config['game']['white_minutes'])
     black_minutes = int(config['game']['black_minutes'])
+    stockfish_elo = int(config['game']['stockfish_elo'])
 
 
     pygame.init()
-    game = RealtimeChessCV(yolo_model_path, video_capture_device, stockfish_exe_path, white_minutes, black_minutes)
+    game = RealtimeChessCV(yolo_model_path, video_capture_device, stockfish_exe_path,
+                           bounding_box_bottom_ratio, white_minutes, black_minutes, stockfish_elo)
     game.run()
 
 
