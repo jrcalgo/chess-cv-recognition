@@ -3,6 +3,6 @@ numpy
 matplotlib
 seaborn
 pandas
-stockfish
 ultralytics
-opencv-python
+opencv-pythonrequests
+setuptools

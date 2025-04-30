@@ -356,9 +356,7 @@ class RealtimeChessCV:
         self._prev_np_board = self._dict_to_np(state_dict)
 
         # ask Stockfish for a reply
-        frm, to = self._stockfish_player.get_stockfish_move(
-            self._prev_np_board, self._white_ms, self._black_ms
-        )
+        frm, to = self._stockfish_player.get_stockfish_move(self._prev_np_board)
         self._stockfish_arrow = (frm, to)
         self._waiting_for_stockfish = True
 

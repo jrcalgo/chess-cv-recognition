@@ -1,71 +1,72 @@
-import multiprocessing
-from typing import Optional
-
+import requests
+from typing import Optional, Tuple
 import numpy as np
 
-from stockfish import Stockfish, StockfishException
 
+class StockfishAPIPlayer:
+    API_URL = "https://stockfish.online/api/s/v2.php"
 
-class StockfishPlayer:
-    def __init__(self, piece_state: np.ndarray, stockfish_exe_path: str, stockfish_depth: int, stockfish_elo: int):
-        self.current_board: np.ndarray = piece_state
-        self.stockfish = Stockfish(
-            path=stockfish_exe_path,
-            depth=stockfish_depth,
-            parameters={
-                "Threads": multiprocessing.cpu_count(),
-                "Hash": 512,
-                "UCI_LimitStrength": False,
-                "UCI_Elo": stockfish_elo
-            })
+    def __init__(self, piece_state: np.ndarray, stockfish_depth: int):
+        self.current_board = piece_state
+        self.depth = stockfish_depth
 
-    def get_stockfish_move(self, recent_piece_state: np.ndarray, white_time: int, black_time: int) -> Optional[tuple[tuple[int, int], tuple[int, int]]]:
-        best_move = None
+    def get_stockfish_move(
+            self,
+            recent_piece_state: np.ndarray,
+    ) -> Optional[Tuple[Tuple[int, int], Tuple[int, int]]]:
+        fen = self._board_to_fen(recent_piece_state)
+
         try:
-            # Convert ChessBoardState to FEN
-            fen = self._board_to_fen(recent_piece_state)
-            print()
-            # Update Stockfish with the current position
-            self.stockfish.set_fen_position(fen)
-            # Retrieve and return the best move
-            best_move = self.stockfish.get_best_move(wtime=white_time, btime=black_time)
-            print(f"original best_move: {best_move}")
-        except StockfishException as e:
-            print(f"Stockfish error: {e}")
-        finally:
-            resolved_best_move = self._to_and_from(best_move) if best_move else None
-            print(f"resolved_best_move: {resolved_best_move}")
-        return resolved_best_move
+            resp = requests.get(
+                self.API_URL,
+                params={
+                    "fen": fen,
+                    "depth": self.depth
+                },
+                timeout=5
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as e:
+            print(f"Stockfish API request failed: {e}")
+            return None
+
+        if not data.get("success", False):
+            print("Stockfish API returned error:", data)
+            return None
+
+        raw = data["bestmove"].split()
+        if len(raw) < 2:
+            print("Unexpected bestmove format:", data["bestmove"])
+            return None
+        uci_move = raw[1]
+
+        return self._uci_to_coords(uci_move)
 
     def _board_to_fen(self, board: np.ndarray, to_move: str = 'b') -> str:
-        rows = []
-        for fen_rank in board:
+        ranks = []
+        for row in board:
             empty = 0
-            row_s = ''
-            for cell in fen_rank:
+            fen_row = ""
+            for cell in row:
                 if not cell:
                     empty += 1
                 else:
                     if empty:
-                        row_s += str(empty)
+                        fen_row += str(empty)
                         empty = 0
-                    # split full name into color + piece
                     color, kind = cell.split('-', 1)
-                    # map kind to letter
-                    letter = 'N' if kind=='knight' else kind[0].upper()
-                    # black pieces are lowercase
-                    row_s += letter.lower() if color=='black' else letter
+                    letter = 'N' if kind == 'knight' else kind[0].upper()
+                    fen_row += letter.lower() if color == 'black' else letter
             if empty:
-                row_s += str(empty)
-            rows.append(row_s)
-        placement = '/'.join(rows)
-
+                fen_row += str(empty)
+            ranks.append(fen_row)
+        placement = "/".join(ranks)
         return f"{placement} {to_move} KQkq - 0 1"
 
-    def _to_and_from(self, best_move: str) -> tuple[tuple[int, int], tuple[int, int]]:
-        if best_move is not None:
-            col_from = ord(best_move[0]) - ord('a')
-            row_from = 8 - int(best_move[1])
-            col_to = ord(best_move[2]) - ord('a')
-            row_to = 8 - int(best_move[3])
-            return (col_from, row_from), (col_to, row_to)
+    def _uci_to_coords(self, uci: str) -> Tuple[Tuple[int, int], Tuple[int, int]]:
+        c_from = ord(uci[0]) - ord('a')
+        r_from = 8 - int(uci[1])
+        c_to = ord(uci[2]) - ord('a')
+        r_to = 8 - int(uci[3])
+        return (c_from, r_from), (c_to, r_to)
