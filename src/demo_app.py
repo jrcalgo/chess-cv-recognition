@@ -3,7 +3,6 @@ from pathlib import Path
 
 import pygame
 
-from chess.cv_chess_game import CVChessGame
 from chess.cv_chess_game2 import RealtimeChessCV
 from utils.configuration import load_json_config
 
