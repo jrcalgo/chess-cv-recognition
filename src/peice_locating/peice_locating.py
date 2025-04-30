@@ -13,10 +13,9 @@ class PieceLocator():
         if len(self.corners) == 4:
             self.grid = gen_grid(self.corners, 8)
             self.has_corners = True
-            draw_grid(self.grid, surf)
             print("PieceLoactor: board initialized")
 
-    def get_piece_locations(self, piece_boxes):
+    def get_piece_locations(self, piece_boxes, screen):
         if not self.has_corners:
             return None
         piece_locations = {}
@@ -24,11 +23,15 @@ class PieceLocator():
             piece_box = piece_boxes[piece]
             piece_rect = pygame.Rect(piece_box["x"], piece_box["y"], piece_box["width"], piece_box["height"])
             base_point = get_center_point(piece_rect)
+            pygame.draw.circle(screen, (0, 255, 255), base_point, 3)
             tile = get_cell(base_point, self.grid)
             if piece not in piece_locations:
                 piece_locations = []
             piece_locations[piece].append(tile)
         return piece_locations
+
+    def draw_grid(self, screen: pygame.Surface):
+        draw_grid(self.grid, screen)
 
 
 def gen_grid(corners: list[pygame.Vector2], grid_size: int) -> list[list[pygame.Vector2]]:

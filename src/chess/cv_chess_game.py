@@ -684,6 +684,8 @@ class CVChessGame:
                     move_made = True
 
 
+            if len(self.piece_locator.corners) >= 4:
+                self.piece_locator.draw_grid(screen)
             current_time = pygame.time.get_ticks()
             time_delta = (current_time - self.last_time) / 1000  # Converts to seconds
             self.last_time = current_time
