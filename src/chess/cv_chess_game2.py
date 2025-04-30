@@ -194,7 +194,6 @@ class RealtimeChessCV:
             if not ok:
                 break
 
-            # Run YOLOv8 inference (single-frame)
             results = self.model.predict(source=frame, conf=0.7, iou=0.5, save=False, stream=True)
 
             annotated = frame.copy()
@@ -272,7 +271,7 @@ class RealtimeChessCV:
             self._draw_grid_on_frame(annotated)
             cv2.putText(
                 annotated,
-                "Press 'R' to redo grid  |  'Q' to quit",
+                "Press 'R' to redo grid | 'Space' for turn | 'Q' to quit",
                 (10, 25),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.7,
@@ -347,10 +346,12 @@ class RealtimeChessCV:
 
     def _handle_human_move(self):
         # freeze White’s clock
-        self._tick_clock()  # one last tick
+        self._tick_clock()
         self._turn = "black"
-        # capture clean board ndarray
-        detections = list(self._shared_piece_locations)
+
+        with self._lock:
+            detections = list(self._shared_piece_locations)
+
         state_dict = self._build_game_state(detections)
         self._prev_np_board = self._dict_to_np(state_dict)
 
@@ -435,7 +436,7 @@ class RealtimeChessCV:
             return state
         for piece in detections:
             cx = piece["x1"] + piece["width"] // 2
-            cy = piece["y1"] + int(piece["height"] ** self._bounding_box_bottom_ratio)  # tweak for piece base
+            cy = piece["y1"] + int(piece["height"] ** self._bounding_box_bottom_ratio)  # tweak for piece based on camera
             warped = cv2.perspectiveTransform(
                 np.array([[[cx, cy]]], dtype=np.float32), self._M
             )[0][0]
