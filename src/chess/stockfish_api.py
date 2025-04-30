@@ -6,7 +6,7 @@ from stockfish import Stockfish, StockfishException
 class StockfishPlayer:
     def __init__(self, piece_state: np.ndarray, stockfish_exe_path: str):
         self.current_board: np.ndarray = piece_state
-        self.stockfish = Stockfish().__init__(
+        self.stockfish = Stockfish(
             path=stockfish_exe_path,
             parameters={
                 "Threads": 2,

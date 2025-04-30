@@ -21,6 +21,7 @@ from typing import Dict, List
 import cv2
 import numpy as np
 import pygame
+from pygame import font
 from ultralytics import YOLO
 
 from .assets.parse_sprites import parse_sprites
@@ -44,6 +45,9 @@ _PIECE_COLORS = {
     'wP': (0, 255, 255), 'wQ': (255, 0, 0), 'wR': (0, 215, 255)
 }
 
+def _fmt_ms(ms: int) -> str:
+    mins, secs = divmod(ms // 1000, 60)
+    return f"{mins}:{secs:02d}"
 
 def _label_to_sprite_code(label: str) -> str | None:
     try:
@@ -67,8 +71,9 @@ class RealtimeChessCV:
     """Encapsulates camera capture, YOLO inference, and GUI display."""
 
     # board & GUI constants
-    _BOARD_PIX = 800  # inner canonical board size (Px)
+    _BOARD_PIX = 800
     _TILE_PIX = _BOARD_PIX // 8
+    _TIMER_BAR = 80
 
     # OpenCV colours (BGR)
     _GRID_COLOUR = (0, 0, 255)
@@ -78,6 +83,7 @@ class RealtimeChessCV:
         self._turn = "white"
         self._white_ms = white_mins * 60_000
         self._black_ms = black_mins * 60_000
+        self._timer_font = pygame.font.SysFont('Montserrat', 30)
         self._last_tick_ms = pygame.time.get_ticks()
         self._waiting_for_stockfish = False
         self._stockfish_arrow = None
@@ -320,20 +326,20 @@ class RealtimeChessCV:
 
         moved_piece = prev[src_r, src_c]
         if moved_piece == "":
-            return False                      # nothing to move
+            return False
 
         # basic source / destination sanity
         if curr[src_r, src_c] != "":
-            return False                      # piece still sitting on source
+            return False
         if curr[dst_r, dst_c] != moved_piece:
-            return False                      # wrong piece on destination
+            return False
 
         # optional strictness: make sure nothing else changed
         mask = np.ones(prev.shape, dtype=bool)
         mask[src_r, src_c] = False
         mask[dst_r, dst_c] = False
         if not np.array_equal(prev[mask], curr[mask]):
-            return False                      # other squares changed → ignore
+            return False
 
         return True
 
@@ -356,7 +362,7 @@ class RealtimeChessCV:
     def _pygame_loop(self) -> None:
         WIDTH = HEIGHT = self._BOARD_PIX
         screen = pygame.display.set_mode((WIDTH, HEIGHT))
-        pygame.display.set_caption("Real-Time Chess Board")
+        pygame.display.set_caption("Chess CV")
 
         clock = pygame.time.Clock()
         running = True
@@ -404,8 +410,52 @@ class RealtimeChessCV:
                     6
                 )
 
-            pygame.display.flip()
-            clock.tick(10)
+            # ── draw board, pieces, arrow ────────────────────────────────────────
+            screen.fill((40, 40, 40))                   # dark frame background
+            board_surface = screen.subsurface((0, 0, self._BOARD_PIX, self._BOARD_PIX))
+            self._draw_board(board_surface)
+
+            with self._lock:
+                detections = list(self._shared_piece_locations)
+            state = self._build_game_state(detections)
+            self._draw_pieces(board_surface, state)
+
+            if self._stockfish_arrow:
+                p1, p2 = self._stockfish_arrow
+                s = self._TILE_PIX
+                pygame.draw.line(
+                    board_surface,
+                    (255, 0, 0),
+                    (p1[0] * s + s // 2, p1[1] * s + s // 2),
+                    (p2[0] * s + s // 2, p2[1] * s + s // 2),
+                    6,
+                )
+
+                bar_rect = pygame.Rect(0, self._BOARD_PIX, WIDTH, self._TIMER_BAR)
+                pygame.draw.rect(screen, (25, 25, 25), bar_rect)
+
+                # white on left, black on right
+                white_txt = self._timer_font.render(self._fmt_ms(self._white_ms), True, (255, 255, 255))
+                black_txt = self._timer_font.render(self._fmt_ms(self._black_ms), True, (255, 255, 255))
+
+                screen.blit(white_txt, (20, self._BOARD_PIX + (self._TIMER_BAR - white_txt.get_height()) // 2))
+                screen.blit(
+                    black_txt,
+                    (
+                        WIDTH - black_txt.get_width() - 20,
+                        self._BOARD_PIX + (self._TIMER_BAR - black_txt.get_height()) // 2,
+                    ),
+                )
+
+                # active side highlight
+                highlight = (0, 200, 0) if self._turn == "white" else (200, 0, 0)
+                h_rect = white_txt.get_rect(topleft=(20, self._BOARD_PIX + (self._TIMER_BAR - white_txt.get_height()) // 2)) \
+                    if self._turn == "white" else \
+                    black_txt.get_rect(topright=(WIDTH - 20, self._BOARD_PIX + (self._TIMER_BAR - black_txt.get_height()) // 2))
+                pygame.draw.rect(screen, highlight, h_rect.inflate(10, 10), 3)
+
+                pygame.display.flip()
+                clock.tick(30)
 
     def _draw_board(self, surface: pygame.Surface) -> None:
         light = (240, 217, 181)

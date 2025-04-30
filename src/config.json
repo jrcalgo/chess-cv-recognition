@@ -2,6 +2,7 @@
     "cv": {
         "yolo_model": "best_v2.pt",
         "video_capture_device": 3,
+        "_comment": "Use absolute path to stockfish exe",
         "stockfish_exe_path": "<your_path_here>"
     },
     "game": {
