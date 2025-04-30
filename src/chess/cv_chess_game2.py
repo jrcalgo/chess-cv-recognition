@@ -373,7 +373,8 @@ class RealtimeChessCV:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
-                elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE and self._turn == "white" and not self._waiting_for_stockfish:
+                elif (event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE and self._turn == "white"
+                      and not self._waiting_for_stockfish):
                     self._handle_human_move()
 
             if not self._perspective_ready.is_set():

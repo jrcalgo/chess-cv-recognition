@@ -10,6 +10,7 @@ class StockfishPlayer:
         self.current_board: np.ndarray = piece_state
         self.stockfish = Stockfish(
             path=stockfish_exe_path,
+            depth=5,
             parameters={
                 "Threads": 4,
                 "UCI_LimitStrength": False,
@@ -67,3 +68,6 @@ class StockfishPlayer:
             col_to = ord(best_move[2]) - ord('a')
             row_to = 8 - int(best_move[3])
             return (col_from, row_from), (col_to, row_to)
+
+    def _stockfish_api_request(self):
+
