@@ -289,10 +289,11 @@ class RealtimeChessCV:
                 2,
             )
             # player times
+            height, width = annotated.shape[:2]
             cv2.putText(
                 annotated,
                 f"White: {_fmt_ms(white_ms)} | Black: {_fmt_ms(black_ms)}",
-                (10, self._BOARD_PIX + 25),
+                (10, height - 10),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.65,
                 (255, 255, 255),

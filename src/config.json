@@ -3,7 +3,7 @@
         "yolo_model": "best_v2.pt",
         "video_capture_device": 0,
         "_comment": "Use absolute path to stockfish exe",
-        "stockfish_exe_path": "/Users/tybg/Documents/GitHub/chess-cv-recognition/stockfish/stockfish-macos-m1-apple-silicon",
+        "stockfish_exe_path": "<absolute_path_to_stockfish_exe>",
         "_comment2": "Configure based on position of camera in relation to board",
         "bounding_box_bottom_ratio": 0.90
     },

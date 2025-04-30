@@ -14,7 +14,7 @@ class StockfishPlayer:
             depth=5,
             parameters={
                 "Threads": multiprocessing.cpu_count(),
-                "hash": 2 * 1024,
+                "Hash": 2 * 1024,
                 "UCI_LimitStrength": False,
                 "Skill Level": 20,
                 "UCI_Elo": stockfish_elo
