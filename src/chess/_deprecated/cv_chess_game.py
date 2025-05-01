@@ -7,10 +7,10 @@ import pygame
 from pygame.time import Clock
 import cv2
 
-from src.chess.ui.chess_game_panel import ChessBoardState, TimerInputScreen
-from src.chess.ui.computer_vision_panel import ComputerVisionPanel, AnnotationAggregator, bgr2rgb
-from .stockfish_api import StockfishPlayer
-from .assets.parse_sprites import parse_sprites
+from src.chess._deprecated.ui.chess_game_panel import ChessBoardState, TimerInputScreen
+from src.chess._deprecated.ui.computer_vision_panel import ComputerVisionPanel, AnnotationAggregator, bgr2rgb
+from src.chess.stockfish_api import StockfishPlayer
+from src.chess.assets.parse_sprites import parse_sprites
 from src.peice_locating.peice_locating import PieceLocator
 
 

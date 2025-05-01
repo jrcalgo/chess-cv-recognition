@@ -415,7 +415,7 @@ class TimerInputScreen:
         while running:
             # cursor blinking
             self.cursor_timer += clock.get_time()
-            if self.cursor_timer >= 500:  # Toggle cursor every 500ms
+            if self.cursor_timer >= 500:
                 self.cursor_visible = not self.cursor_visible
                 self.cursor_timer = 0
 

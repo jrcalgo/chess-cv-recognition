@@ -12,7 +12,7 @@ YOLO_MODEL_DIR = os.path.join(project_root, 'models')
 CONFIG_PATH = os.path.join(this_file.parent, 'config.json')
 
 
-def main(stats=None):
+def main():
     config = load_json_config(CONFIG_PATH)
 
     yolo_model_path = os.path.join(YOLO_MODEL_DIR, config['cv']['yolo_model'])
@@ -31,11 +31,4 @@ def main(stats=None):
 
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--stats", type=bool, default=False)
-    args = parser.parse_args()
-    stats = args.stats
-
-    main(stats=args.stats)
+    main()

@@ -5,6 +5,7 @@ import pygame
 
 letter_map = {0: 'a', 1: 'b', 2: 'c', 3: 'd', 4: 'e', 5: 'f', 6: 'g', 7: 'h'}
 
+
 class PieceLocator():
     def __init__(self):
         self.corners = []
@@ -16,7 +17,6 @@ class PieceLocator():
             self.grid = gen_grid(self.corners, 8)
             self.has_corners = True
             print("PieceLoactor: board initialized")
-
 
     def get_piece_locations(self, piece_boxes, screen):
         if not self.has_corners:
@@ -84,8 +84,8 @@ def get_center_point(rect: pygame.Rect):
 
 
 def get_cell(point: pygame.Vector2, grid: list[list[pygame.Vector2]]):
-    for row in range(len(grid)-1):
-        for col in range(len(grid[row])-1):
+    for row in range(len(grid) - 1):
+        for col in range(len(grid[row]) - 1):
             if is_in_cell(point, grid, row, col):
                 return [row, col]
     return (-1, -1)

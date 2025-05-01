@@ -1,15 +1,17 @@
 """
 Real-time chess piece detection and GUI visualization.
 
-Opens two windows:
+Opens three (primarily two) windows:
+  0. Homography calibration window – select four corners of the chessboard based on still-frame capture.
   1. OpenCV window – raw camera feed with bounding-box overlays.
-  2. Pygame window   – 2-D board updated from detections.
+  2. Pygame window – 2-D board GUI updated from live camera detections.
 
 Usage
 -----
 
-Press ‘r’ in the OpenCV window at any time to re-select the four board corners.
-Press ‘q’ to quit.
+Press ‘r’ in the OpenCV window at any time to re-select the four board corners for re-calibration.
+Press ‘q’ to quit entire program.
+Press 'space' in the Pygame window to make a move, stop the clock, and save the board state.
 """
 from __future__ import annotations
 
@@ -21,7 +23,6 @@ from typing import Dict, List
 import cv2
 import numpy as np
 import pygame
-from pygame import font
 from ultralytics import YOLO
 
 from .assets.parse_sprites import parse_sprites
@@ -70,14 +71,16 @@ def _create_kalman_filter() -> cv2.KalmanFilter:
 
 
 class RealtimeChessCV:
-    """Encapsulates camera capture, YOLO inference, and GUI display."""
+    """
+    Utilizes camera capture, YOLO inference, and GUI display.
+    """
 
     # board & GUI constants
     _BOARD_PIX = 800
     _TILE_PIX = _BOARD_PIX // 8
     _TIMER_BAR = 80
 
-    # OpenCV colours (BGR)
+    # BGR format
     _GRID_COLOUR = (0, 0, 255)
 
     def __init__(self, model_path: str | Path, camera_index: int = 0, stockfish_exe_path: str = "",
@@ -120,15 +123,17 @@ class RealtimeChessCV:
         self._sprite_dict = {**self._white_sprites, **self._black_sprites}
 
     def run(self) -> None:
-        """Blocking main loop (runs until user presses ‘q’)."""
-        # Step 1 – user clicks four board corners
+        """
+        Blocking main loop (runs until user presses ‘q’).
+        """
+        # Step 1
         self._select_grid()
 
-        # Step 2 – spin up Pygame GUI thread
+        # Step 2
         gui_thr = threading.Thread(target=self._pygame_loop, daemon=True)
         gui_thr.start()
 
-        # Step 3 – main detection loop (OpenCV window)
+        # Step 3
         try:
             self._detection_loop()
         finally:
@@ -184,12 +189,12 @@ class RealtimeChessCV:
 
         cv2.destroyWindow("Click Corners")
 
-        # compute perspective transform from canonical board to image space
+        # compute perspective transform matrix
         self._board_src = np.float32(
             [[0, 0], [self._BOARD_PIX, 0], [0, self._BOARD_PIX], [self._BOARD_PIX, self._BOARD_PIX]])
         self._board_dst = np.float32(clicked_pts)
         self._M = cv2.getPerspectiveTransform(
-            self._board_dst,  # img→board (inverse of earlier code for GUI)
+            self._board_dst,
             self._board_src,
         )
         self._perspective_ready.set()
@@ -227,7 +232,7 @@ class RealtimeChessCV:
 
                     w, h = x2 - x1, y2 - y1
 
-                    # Kalman smoothing per small region id
+                    # Kalman smoothing
                     if center_id not in self._kalman_filters:
                         kf = _create_kalman_filter()
                         kf.statePre = np.array([[cx], [cy], [0], [0]], np.float32)
@@ -268,7 +273,7 @@ class RealtimeChessCV:
                         2,
                     )
 
-            # push detections to GUI thread
+            # push detections
             with self._lock:
                 white_ms = self._white_ms
                 black_ms = self._black_ms
@@ -276,7 +281,7 @@ class RealtimeChessCV:
                 self._shared_piece_locations.clear()
                 self._shared_piece_locations.extend(current_pieces)
 
-            # overlay grid for user feedback
+            # overlay grid
             self._draw_grid_on_frame(annotated)
             # Key shortcut info
             cv2.putText(
@@ -310,7 +315,7 @@ class RealtimeChessCV:
 
     def _dict_to_np(self, state: Dict[str, str]) -> np.ndarray:
         """
-        Convert an algebraic-notation dict (e.g. {'e4':'wP'}) → 8×8 ndarray.
+        Convert an algebraic-notation dict → 8×8 ndarray.
         """
         board = np.full((8, 8), "", dtype=object)
 
@@ -328,7 +333,7 @@ class RealtimeChessCV:
             curr: np.ndarray,
     ) -> bool:
         """
-        True ⇢ engine’s suggested piece has moved **exactly as drawn**.
+        True ⇢ engine’s suggested piece has moved correctly.
         """
         if self._stockfish_arrow is None:
             return False
@@ -339,13 +344,13 @@ class RealtimeChessCV:
         if moved_piece == "":
             return False
 
-        # basic source / destination sanity
+        # source, destination sanity check
         if curr[src_r, src_c] != "":
             return False
         if curr[dst_r, dst_c] != moved_piece:
             return False
 
-        # optional strictness: make sure nothing else changed
+        # make sure nothing else changed
         mask = np.ones(prev.shape, dtype=bool)
         mask[src_r, src_c] = False
         mask[dst_r, dst_c] = False
@@ -355,7 +360,7 @@ class RealtimeChessCV:
         return True
 
     def _handle_human_move(self):
-        # freeze White’s clock
+        # _tick_click() will freeze White’s clock
         self._tick_clock()
         self._turn = "black"
 
@@ -365,11 +370,11 @@ class RealtimeChessCV:
         state_dict = self._build_game_state(detections)
         self._prev_np_board = self._dict_to_np(state_dict)
 
-        # ask Stockfish for a reply
         with self._lock:
             white_ms = self._white_ms
             black_ms = self._black_ms
 
+        # ask Stockfish for a reply
         frm, to = self._stockfish_player.get_stockfish_move(
             self._prev_np_board, white_ms, black_ms
         )
@@ -404,12 +409,12 @@ class RealtimeChessCV:
                 np_board = self._dict_to_np(state_dict)
 
                 if self._has_arrow_move_occurred(self._prev_np_board, np_board):
-                    # Black obeyed – stop their clock, start White’s
+                    # Stop black's clock
                     self._tick_clock()
                     self._turn = "white"
                     self._waiting_for_stockfish = False
                     self._stockfish_arrow = None
-                    self._prev_np_board = np_board  # new baseline
+                    self._prev_np_board = np_board  # newest board baseline
 
             # render board & pieces
             screen.fill((0, 0, 0))
@@ -453,9 +458,7 @@ class RealtimeChessCV:
             cx = piece["x1"] + piece["width"] // 2
             cy = piece["y1"] + int(
                 piece["height"] ** self._bounding_box_bottom_ratio)  # tweak for piece based on camera
-            warped = cv2.perspectiveTransform(
-                np.array([[[cx, cy]]], dtype=np.float32), self._M
-            )[0][0]
+            warped = cv2.perspectiveTransform(np.array([[[cx, cy]]], dtype=np.float32), self._M)[0][0]
             gx, gy = warped
             col = int(gx // self._TILE_PIX)
             row = int(gy // self._TILE_PIX)
@@ -469,7 +472,7 @@ class RealtimeChessCV:
             code = _label_to_sprite_code(label)
             sprite = self._sprite_dict.get(code)
             if sprite is None:
-                continue  # silently skip unknowns
+                continue  # continue on unknown pieces
             col = "abcdefgh".index(square[0])
             row = 8 - int(square[1])
             x = col * self._TILE_PIX + (self._TILE_PIX - sprite.get_width()) // 2
