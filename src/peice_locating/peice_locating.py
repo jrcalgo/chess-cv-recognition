@@ -23,6 +23,7 @@ class PieceLocator():
             return None
         piece_locations = {}
         for piece in piece_boxes:
+
             piece_rect = pygame.Rect(piece["x"], piece["y"], piece["width"], piece["height"])
             base_point = get_center_point(piece_rect)
             pygame.draw.circle(screen, (0, 255, 255), base_point, 3)
