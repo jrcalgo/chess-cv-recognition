@@ -1,0 +1,15 @@
+{
+    "cv": {
+        "yolo_model": "best_v2.pt",
+        "video_capture_device": 0,
+        "_comment": "Use absolute path to stockfish exe",
+        "stockfish_exe_path": "<absolute_path_to_stockfish_exe>",
+        "_comment2": "Configure based on position of camera in relation to board",
+        "bounding_box_bottom_ratio": 0.95
+    },
+    "game": {
+        "white_minutes": 10,
+        "black_minutes": 10,
+        "stockfish_elo": 2000
+    }
+}

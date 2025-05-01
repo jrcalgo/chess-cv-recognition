@@ -1,6 +1,5 @@
 pygame
 numpy
-matplotlib
-seaborn
-pandas
 stockfish
+ultralytics
+opencv-python

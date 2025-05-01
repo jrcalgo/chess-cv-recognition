@@ -1,9 +1,9 @@
-from setuptools import setup, find_packages
+from setuptools import setup
 
 setup(name='chess_cv_recognition',
-      version='0.0.1',
-      description='A package to recognize chess pieces from images and/or videos',
+      author='Jackson Redman, Amith Koneru, Nick Petruccelli',
+      version='1.0.0',
+      description='A desktop GUI application for real-time chess piece detection with Stockfish play.',
       long_description=open('README.md').read(),
       long_description_content_type='text/markdown',
-      url='https://github.com/jrcalgo/chess-cv-recognition',
-      )
+      url='https://github.com/jrcalgo/chess-cv-recognition')
