@@ -1,4 +1,6 @@
-# chess-cv-recognition
+# Chess CV Recognition App
+This app turns your webcam into a live chessboard: it uses a fine-tuned YOLO model to detect your pieces, draws the board in Pygame, and then plays back moves against you via Stockfish. All you do is tweak camera index, model choice, timers and engine strength in a single config.json.
+![image](https://github.com/user-attachments/assets/c77458b1-04de-409d-ac4f-f59673055c14)
 
 
 ## 1. Prerequisites
